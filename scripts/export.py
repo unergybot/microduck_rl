@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -9,8 +10,6 @@ from typing import Literal
 
 import torch
 import tyro
-from rsl_rl.runners import OnPolicyRunner
-
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_runner_cls
@@ -18,7 +17,49 @@ from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.utils.os import get_checkpoint_path, get_wandb_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wrappers import VideoRecorder
-from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
+from rsl_rl.runners import OnPolicyRunner
+
+from mjlab_microduck.rom.onnx_policy import inspect_normalized_actor
+
+
+def attach_microduck_metadata(
+    onnx_path: str | Path,
+    *,
+    task_id: str,
+    source_commit: str,
+    checkpoint: str | None,
+    run_identity: str | None,
+) -> None:
+    """Append ROM provenance without replacing the exported, normalized actor graph."""
+    import onnx
+
+    model = onnx.load(str(onnx_path))
+    try:
+        normalized_graph = inspect_normalized_actor(model)
+    except ValueError as exc:
+        raise ValueError(
+            "exported actor does not contain the expected empirical normalizer"
+        ) from exc
+    metadata = {entry.key: entry.value for entry in model.metadata_props}
+    metadata.update(
+        {
+            "microduck.task_id": task_id,
+            "microduck.source_commit": source_commit,
+            "microduck.observation_contract": "MICRODUCK_OBS_61_V1",
+            "microduck.action_contract": "MICRODUCK_ACTION_14_V1",
+            "microduck.checkpoint": checkpoint or "",
+            "microduck.run_identity": run_identity or "",
+            "microduck.normalization": "EMPIRICAL_NORMALIZATION_V1",
+            "microduck.normalization_graph_sha256": normalized_graph.graph_sha256,
+            "microduck.normalized_graph_fingerprint": normalized_graph.fingerprint,
+        }
+    )
+    del model.metadata_props[:]
+    for key, value in sorted(metadata.items()):
+        item = model.metadata_props.add()
+        item.key = key
+        item.value = value
+    onnx.save(model, str(onnx_path))
 
 
 @dataclass(frozen=True)
@@ -27,7 +68,7 @@ class ExportConfig:
     agent: Literal["zero", "random", "trained"] = "trained"
     registry_name: str | None = None
     wandb_run_path: str | None = None
-    checkpoint: int | None = None      # Select checkpoint by iteration number (e.g. 3000)
+    checkpoint: int | None = None  # Select checkpoint by iteration number (e.g. 3000)
     checkpoint_file: str | None = None
     motion_file: str | None = None
     num_envs: int | None = None
@@ -76,7 +117,7 @@ def run_export(task_id: str, cfg: ExportConfig):
 
         # Check if motion file is already set and exists
         motion_file_already_set = (
-            hasattr(motion_cmd, 'motion_file')
+            hasattr(motion_cmd, "motion_file")
             and motion_cmd.motion_file is not None
             and Path(motion_cmd.motion_file).exists()
         )
@@ -100,7 +141,9 @@ def run_export(task_id: str, cfg: ExportConfig):
                 print(f"[INFO]: Using motion file from CLI: {cfg.motion_file}")
                 motion_cmd.motion_file = cfg.motion_file
             elif motion_file_already_set:
-                print(f"[INFO]: Using motion file from env config: {motion_cmd.motion_file}")
+                print(
+                    f"[INFO]: Using motion file from env config: {motion_cmd.motion_file}"
+                )
             else:
                 # Try to download from wandb artifacts
                 import wandb
@@ -135,13 +178,16 @@ def run_export(task_id: str, cfg: ExportConfig):
             checkpoint_filename = f"model_{cfg.checkpoint}.pt"
             if cfg.wandb_run_path is not None:
                 import wandb
+
                 api = wandb.Api()
                 wandb_run = api.run(str(cfg.wandb_run_path))
                 run_id = cfg.wandb_run_path.split("/")[-1]
                 download_dir = log_root_path / "wandb_checkpoints" / run_id
                 resume_path = download_dir / checkpoint_filename
                 if resume_path.exists():
-                    print(f"[INFO]: Loading checkpoint: {checkpoint_filename} (run: {run_id}, cached)")
+                    print(
+                        f"[INFO]: Loading checkpoint: {checkpoint_filename} (run: {run_id}, cached)"
+                    )
                 else:
                     available = [f.name for f in wandb_run.files() if "model" in f.name]
                     if checkpoint_filename not in available:
@@ -149,8 +195,12 @@ def run_export(task_id: str, cfg: ExportConfig):
                             f"Checkpoint '{checkpoint_filename}' not found in wandb run. "
                             f"Available: {sorted(available)}"
                         )
-                    wandb_run.file(checkpoint_filename).download(str(download_dir), replace=True)
-                    print(f"[INFO]: Loading checkpoint: {checkpoint_filename} (run: {run_id}, downloaded)")
+                    wandb_run.file(checkpoint_filename).download(
+                        str(download_dir), replace=True
+                    )
+                    print(
+                        f"[INFO]: Loading checkpoint: {checkpoint_filename} (run: {run_id}, downloaded)"
+                    )
             else:
                 resume_path = get_checkpoint_path(
                     log_root_path, checkpoint=re.escape(checkpoint_filename)
@@ -208,7 +258,7 @@ def run_export(task_id: str, cfg: ExportConfig):
                     del obs
                     return torch.zeros(action_shape, device=env.unwrapped.device)
 
-            policy = PolicyZero()
+            _policy = PolicyZero()
         else:
 
             class PolicyRandom:
@@ -216,12 +266,12 @@ def run_export(task_id: str, cfg: ExportConfig):
                     del obs
                     return 2 * torch.rand(action_shape, device=env.unwrapped.device) - 1
 
-            policy = PolicyRandom()
+            _policy = PolicyRandom()
     else:
         runner_cls = load_runner_cls(task_id) or OnPolicyRunner
         runner = runner_cls(env, asdict(agent_cfg), device=device)
         runner.load(str(resume_path), map_location=device)
-        policy = runner.get_inference_policy(device=device)
+        runner.get_inference_policy(device=device)
 
     # mjlab 1.3.0: ONNX export + metadata moved to mjlab.rl.exporter_utils and
     # the runner's built-in export_policy_to_onnx. Observation normalization is
@@ -229,7 +279,7 @@ def run_export(task_id: str, cfg: ExportConfig):
     # submodule of the policy's MLPModel (obs_normalization=True in RslRlModelCfg),
     # so export_policy_to_onnx emits actor(normalizer(obs)). No manual normalizer
     # handling needed (the old export_velocity_policy_as_onnx path is gone).
-    from mjlab.rl.exporter_utils import get_base_metadata, attach_metadata_to_onnx
+    from mjlab.rl.exporter_utils import attach_metadata_to_onnx, get_base_metadata
 
     onnx_path = os.path.abspath(cfg.onnx_file)
     path = os.path.dirname(onnx_path)
@@ -239,6 +289,18 @@ def run_export(task_id: str, cfg: ExportConfig):
 
     metadata = get_base_metadata(runner.env.unwrapped, run_path=cfg.checkpoint_file)
     attach_metadata_to_onnx(onnx_path, metadata)
+    source_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True, cwd=Path(__file__).parents[1]
+    ).strip()
+    attach_microduck_metadata(
+        onnx_path,
+        task_id=task_id,
+        source_commit=source_commit,
+        checkpoint=resume_path.name if resume_path is not None else None,
+        run_identity=cfg.wandb_run_path or str(resume_path)
+        if resume_path is not None
+        else None,
+    )
 
     print(f"Written {onnx_path}")
 

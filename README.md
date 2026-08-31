@@ -222,6 +222,19 @@ command prints the output path, frame count, command, policy SHA-256, and maximu
 position and orientation errors from the motion validator. On failure it prints
 one `Policy rollout failed: ...` error line and exits with status `2`.
 
+## ROM simulator releases
+
+Policy bundles can be built, qualified through the exact governed MuJoCo/ONNX
+runtime, promoted immutably, and served through the authenticated simulator API.
+The runtime supports qualified continuous actions and governed `STAND` through
+the SitStand policy family; every other discrete catalog entry remains
+explicitly unavailable until its own reset and completion semantics exist. See
+[docs/rom-simulator.md](docs/rom-simulator.md)
+for the export, release-policy, owner-only mounted-secret Docker workflow,
+safe credential rotation and cleanup, curl, backup, timeout, and license
+workflow. Production launches accept the bearer only from the documented
+read-only secret mount; do not pass it through Docker environment metadata.
+
 ## Related projects
 
 - [microduck](https://github.com/unergybot/microduck) — the forked Microduck runtime that runs the exported policies

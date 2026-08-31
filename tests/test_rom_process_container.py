@@ -1,0 +1,2138 @@
+from __future__ import annotations
+
+import json
+import os
+import select
+import shlex
+import signal
+import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+
+import pytest
+
+from mjlab_microduck.rom.handoff import materialize_distribution_bundle
+from tests.test_rom_qualification import _docker_context_includes
+
+_REPOSITORY_FILES: Final[frozenset[str]] = frozenset(
+    {
+        "LICENSE",
+        "pyproject.toml",
+        "uv.lock",
+        "docker/rom-simulator/entrypoint.sh",
+        "docker/rom-simulator/mjlab_microduck_rom.pth",
+        "docker/rom-simulator/pid1_bootstrap.py",
+        "schemas/microduck-policy-bundle-v1.schema.json",
+        "schemas/microduck-simulator-api-v1.openapi.yaml",
+        "schemas/microduck-v1-portability-fixtures.json",
+        "src/mjlab_microduck/__init__.py",
+        "src/mjlab_microduck/rom/__init__.py",
+        "src/mjlab_microduck/rom/action_catalog.py",
+        "src/mjlab_microduck/rom/action_specs.py",
+        "src/mjlab_microduck/rom/api.py",
+        "src/mjlab_microduck/rom/bundle.py",
+        "src/mjlab_microduck/rom/contracts.py",
+        "src/mjlab_microduck/rom/main.py",
+        "src/mjlab_microduck/rom/mirroring.py",
+        "src/mjlab_microduck/rom/model_semantics.py",
+        "src/mjlab_microduck/rom/mujoco_runtime.py",
+        "src/mjlab_microduck/rom/observation.py",
+        "src/mjlab_microduck/rom/onnx_policy.py",
+        "src/mjlab_microduck/rom/parent_death.py",
+        "src/mjlab_microduck/rom/process_protocol.py",
+        "src/mjlab_microduck/rom/process_service.py",
+        "src/mjlab_microduck/rom/process_supervisor.py",
+        "src/mjlab_microduck/rom/qualification.py",
+        "src/mjlab_microduck/rom/runtime.py",
+        "src/mjlab_microduck/rom/runtime_child.py",
+        "src/mjlab_microduck/rom/runtime_identity.py",
+        "src/mjlab_microduck/rom/secret_file.py",
+        "src/mjlab_microduck/rom/service.py",
+        "src/mjlab_microduck/rom/store.py",
+        "src/mjlab_microduck/rom/supervisor_state.py",
+    }
+)
+_IMAGE_RUNTIME_FILES: Final[frozenset[str]] = frozenset(
+    {
+        "LICENSE",
+        "pyproject.toml",
+        *(
+            path
+            for path in _REPOSITORY_FILES
+            if path.startswith(("schemas/", "src/"))
+        ),
+    }
+)
+_TOKEN: Final = "container-release-gate-token"
+_DIRECT_TOKEN_ENV: Final = "MICRODUCK_ROM_BEARER_TOKEN"
+_SECRET_CONTAINER_PATH: Final = "/run/secrets/microduck_rom_bearer_token"
+_IMAGE_DISTRIBUTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "absl-py",
+        "annotated-doc",
+        "annotated-types",
+        "anyio",
+        "click",
+        "etils",
+        "fastapi",
+        "flatbuffers",
+        "fsspec",
+        "glfw",
+        "h11",
+        "idna",
+        "importlib-resources",
+        "ml-dtypes",
+        "mpmath",
+        "mujoco",
+        "numpy",
+        "onnx",
+        "onnxruntime",
+        "packaging",
+        "protobuf",
+        "pydantic",
+        "pydantic-core",
+        "pyopengl",
+        "starlette",
+        "sympy",
+        "typing-extensions",
+        "typing-inspection",
+        "uvicorn",
+        "zipp",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _Container:
+    name: str
+    image: str
+    base_url: str
+    state_dir: Path
+    parent_pid: int
+    child_pid: int
+
+
+def _release_inputs(tmp_path: Path) -> tuple[str, Path]:
+    image = os.environ.get("MICRODUCK_ROM_CONTAINER_TEST_IMAGE")
+    bundle_input = os.environ.get("MICRODUCK_ROM_CONTAINER_TEST_BUNDLE")
+    if not image or not bundle_input:
+        pytest.skip(
+            "set MICRODUCK_ROM_CONTAINER_TEST_IMAGE and "
+            "MICRODUCK_ROM_CONTAINER_TEST_BUNDLE for real lifecycle evidence"
+        )
+    source = Path(bundle_input).resolve()
+    if source.is_dir():
+        bundle = source
+    else:
+        bundle = tmp_path / "bundle"
+        bundle.mkdir()
+        with zipfile.ZipFile(source) as archive:
+            archive.extractall(bundle)
+    assert (bundle / "microduck-policy-bundle.json").is_file()
+    return image, bundle
+
+
+def _run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        check=check,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _prepare_state(image: str, state_dir: Path) -> None:
+    state_dir.mkdir(exist_ok=True)
+    mount = f"type=bind,src={state_dir},dst=/state"
+    _run(
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--mount",
+        mount,
+        "--entrypoint",
+        "/bin/chown",
+        image,
+        "10001:10001",
+        "/state",
+    )
+    _run(
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--mount",
+        mount,
+        "--entrypoint",
+        "/bin/chmod",
+        image,
+        "0750",
+        "/state",
+    )
+
+
+def _prepare_secret(
+    image: str,
+    secret_dir: Path,
+    *,
+    mode: int = 0o400,
+    uid: int = 10001,
+    gid: int = 10001,
+) -> Path:
+    """Create a host fixture as image root without requiring host chown rights."""
+    secret_dir.mkdir()
+    completed = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--interactive",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,src={secret_dir},dst=/secret-fixture",
+            "--entrypoint",
+            "/app/.venv/bin/python",
+            image,
+            "-P",
+            "-c",
+            (
+                "import os,pathlib,sys;"
+                "path=pathlib.Path('/secret-fixture/bearer');"
+                "path.write_bytes(sys.stdin.buffer.read()+b'\\n');"
+                "os.chown(path,int(sys.argv[1]),int(sys.argv[2]));"
+                "os.chmod(path,int(sys.argv[3],8))"
+            ),
+            str(uid),
+            str(gid),
+            f"{mode:o}",
+        ],
+        input=_TOKEN.encode(),
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        raise AssertionError("image root helper could not create secret fixture")
+    return secret_dir / "bearer"
+
+
+def _secret_mount(secret_file: Path, *, readonly: bool = True) -> str:
+    mount = f"type=bind,src={secret_file},dst={_SECRET_CONTAINER_PATH}"
+    return f"{mount},readonly" if readonly else mount
+
+
+def _cleanup_failed_container_launch(
+    *, image: str, state_dir: Path, name: str, failure: BaseException
+) -> None:
+    """Best-effort cleanup that preserves the original, non-echoing failure."""
+    cleanup_incomplete = False
+    try:
+        removed = _run("docker", "rm", "--force", name, check=False)
+        if removed.returncode != 0:
+            inspected = _run("docker", "inspect", name, check=False)
+            cleanup_incomplete = inspected.returncode == 0
+    except BaseException:  # noqa: BLE001 - the original security failure must win
+        cleanup_incomplete = True
+
+    try:
+        if state_dir.exists():
+            _restore_state_ownership(image, state_dir)
+    except BaseException:  # noqa: BLE001 - do not expose cleanup command output
+        cleanup_incomplete = True
+
+    if cleanup_incomplete:
+        failure.add_note("container startup cleanup did not complete")
+
+
+def _container_pids(name: str) -> tuple[int, tuple[int, ...]]:
+    parent_pid = int(
+        _run("docker", "inspect", "--format", "{{.State.Pid}}", name).stdout
+    )
+    top = _run("docker", "top", name, "-eo", "pid,ppid").stdout.splitlines()
+    pids = tuple(
+        int(line.split()[0])
+        for line in top[1:]
+        if line.split() and line.split()[0].isdigit()
+    )
+    descendants = tuple(pid for pid in pids if pid != parent_pid)
+    return parent_pid, descendants
+
+
+def _namespace_pid(host_pid: int) -> int:
+    status = Path(f"/proc/{host_pid}/status").read_text()
+    line = next(item for item in status.splitlines() if item.startswith("NSpid:"))
+    return int(line.split()[-1])
+
+
+def _container_proc_maps(name: str, namespace_pid: int) -> str:
+    return _run(
+        "docker",
+        "exec",
+        "--user",
+        "10001:10001",
+        name,
+        "/bin/cat",
+        f"/proc/{namespace_pid}/maps",
+    ).stdout.lower()
+
+
+def _signal_container_pid(
+    container: _Container,
+    host_pid: int,
+    signum: signal.Signals,
+    *,
+    check: bool = True,
+) -> None:
+    """Signal one exact namespace PID as the same non-root container UID."""
+    namespace_pid = _namespace_pid(host_pid)
+    completed = _run(
+        "docker",
+        "exec",
+        "--user",
+        "10001:10001",
+        container.name,
+        "/app/.venv/bin/python",
+        "-P",
+        "-c",
+        "import os,sys;os.kill(int(sys.argv[1]),int(sys.argv[2]))",
+        str(namespace_pid),
+        str(int(signum)),
+        check=check,
+    )
+    if check:
+        assert completed.returncode == 0
+
+
+def _parent_wchans(container: _Container) -> tuple[str, ...]:
+    completed = _run(
+        "docker",
+        "exec",
+        "--user",
+        "10001:10001",
+        container.name,
+        "/app/.venv/bin/python",
+        "-P",
+        "-c",
+        (
+            "from pathlib import Path;"
+            "print('\\n'.join(p.read_text().strip() "
+            "for p in Path('/proc/1/task').glob('*/wchan')))"
+        ),
+    )
+    return tuple(completed.stdout.splitlines())
+
+
+def _wait_parent_wchan_count(
+    container: _Container,
+    expected: str,
+    expected_count: int,
+    *,
+    timeout: float = 5.0,
+) -> None:
+    """Wait for a kernel-visible parent thread state, not an elapsed-time guess."""
+    deadline = time.monotonic() + timeout
+    latest = ""
+    while time.monotonic() < deadline:
+        wchans = _parent_wchans(container)
+        latest = "\n".join(wchans)
+        if sum(expected in item for item in wchans) >= expected_count:
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"parent thread did not enter {expected}: {latest}")
+
+
+def _cross_idle_child_protocol_barrier(container: _Container) -> None:
+    """Round-trip START/STOP and leave the same exact child idle for the gate."""
+    before_pid = container.child_pid
+    probe_id = "e" * 32
+    status, _task = _request(
+        container.base_url,
+        "POST",
+        "/v1/tasks",
+        _walk_request(container, probe_id, 5_000),
+    )
+    assert status == 202
+    _wait_task(container, probe_id, {"RUNNING"})
+    status, terminal = _request(
+        container.base_url, "POST", f"/v1/tasks/{probe_id}/cancel"
+    )
+    assert status == 200
+    assert terminal["state"] == "CANCELLED"
+    _wait_task(container, probe_id, {"CANCELLED"})
+    _wait_ready(container, True)
+    _parent_pid, descendants = _container_pids(container.name)
+    assert descendants == (before_pid,)
+
+
+def _launch_container(
+    *, image: str, bundle: Path, state_dir: Path, suffix: str
+) -> _Container:
+    name = f"microduck-rom-task5-{os.getpid()}-{suffix}"
+    try:
+        _prepare_state(image, state_dir)
+        secret_file = _prepare_secret(
+            image, state_dir.parent / f"{state_dir.name}-{suffix}-secret"
+        )
+        _run("docker", "rm", "--force", name, check=False)
+        _run(
+            "docker",
+            "run",
+            "--detach",
+            "--name",
+            name,
+            "--user",
+            "10001:10001",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,size=64m",
+            "--mount",
+            f"type=bind,src={bundle},dst=/bundle,readonly",
+            "--mount",
+            f"type=bind,src={state_dir},dst=/state",
+            "--mount",
+            _secret_mount(secret_file),
+            "--publish",
+            "127.0.0.1::8000",
+            "--stop-timeout",
+            "60",
+            image,
+        )
+        deadline = time.monotonic() + 30
+        base_url = ""
+        failure_label = "container did not publish a port"
+        while time.monotonic() < deadline:
+            port = _run(
+                "docker", "port", name, "8000/tcp", check=False
+            ).stdout.strip()
+            if port:
+                base_url = f"http://127.0.0.1:{port.rsplit(':', 1)[1]}"
+                try:
+                    status, body = _request(base_url, "GET", "/v1/ready")
+                    if status == 200 and body.get("ready") is True:
+                        break
+                    _assert_token_absent(
+                        "container readiness response",
+                        json.dumps(body, separators=(",", ":")),
+                    )
+                    failure_label = f"container readiness returned HTTP {status}"
+                except (OSError, ValueError) as exc:
+                    failure_label = (
+                        "container readiness request failed with "
+                        f"{type(exc).__name__}"
+                    )
+            time.sleep(0.05)
+        else:
+            logs = _run("docker", "logs", name, check=False)
+            _assert_token_absent("container startup logs", logs.stdout + logs.stderr)
+            raise AssertionError(f"{failure_label}; container did not become ready")
+        parent_pid, descendants = _container_pids(name)
+        assert len(descendants) == 1
+        return _Container(
+            name, image, base_url, state_dir, parent_pid, descendants[0]
+        )
+    except BaseException as failure:
+        _cleanup_failed_container_launch(
+            image=image,
+            state_dir=state_dir,
+            name=name,
+            failure=failure,
+        )
+        raise
+
+
+def _launch_without_readiness_wait(
+    *, image: str, bundle: Path, state_dir: Path, suffix: str
+) -> tuple[str, int, tuple[int, ...]]:
+    """Start the production entrypoint and return as soon as Docker owns PID 1."""
+    name = f"microduck-rom-task5-{os.getpid()}-{suffix}"
+    try:
+        _prepare_state(image, state_dir)
+        secret_file = _prepare_secret(
+            image, state_dir.parent / f"{state_dir.name}-secret"
+        )
+        _run("docker", "rm", "--force", name, check=False)
+        _run(
+            "docker",
+            "run",
+            "--detach",
+            "--name",
+            name,
+            "--user",
+            "10001:10001",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,size=64m",
+            "--mount",
+            f"type=bind,src={bundle},dst=/bundle,readonly",
+            "--mount",
+            f"type=bind,src={state_dir},dst=/state",
+            "--mount",
+            _secret_mount(secret_file),
+            "--stop-timeout",
+            "60",
+            image,
+        )
+        deadline = time.monotonic() + 5.0
+        marker = "/tmp/.microduck-pid1-sigterm-ready"
+        while time.monotonic() < deadline:
+            observed = _run(
+                "docker",
+                "exec",
+                "--user",
+                "10001:10001",
+                name,
+                "/usr/bin/test",
+                "-f",
+                marker,
+                check=False,
+            )
+            if observed.returncode == 0:
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("PID 1 did not publish its pre-import SIGTERM barrier")
+        parent_pid, descendants = _container_pids(name)
+        return name, parent_pid, descendants
+    except BaseException as failure:
+        _cleanup_failed_container_launch(
+            image=image,
+            state_dir=state_dir,
+            name=name,
+            failure=failure,
+        )
+        raise
+
+
+def _assert_token_absent(channel: str, evidence: str) -> None:
+    if _TOKEN in evidence:
+        raise AssertionError(f"bearer literal leaked through {channel}")
+
+
+def _assert_mounted_evidence_has_no_token(
+    image: str, evidence_path: Path, channel: str
+) -> None:
+    completed = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--interactive",
+            "--read-only",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,src={evidence_path},dst=/evidence,readonly",
+            "--entrypoint",
+            "/app/.venv/bin/python",
+            image,
+            "-P",
+            "-c",
+            (
+                "import pathlib,sys,zipfile\n"
+                "needle=sys.stdin.buffer.read()\n"
+                "root=pathlib.Path('/evidence')\n"
+                "paths=[root] if root.is_file() else "
+                "[p for p in root.rglob('*') if p.is_file()]\n"
+                "leaked=False\n"
+                "for path in paths:\n"
+                " data=path.read_bytes()\n"
+                " leaked=leaked or needle in data\n"
+                " if zipfile.is_zipfile(path):\n"
+                "  with zipfile.ZipFile(path) as archive:\n"
+                "   leaked=leaked or any(needle in archive.read(name) "
+                "for name in archive.namelist())\n"
+                "raise SystemExit(86 if leaked else 0)\n"
+            ),
+        ],
+        input=_TOKEN.encode(),
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode == 86:
+        raise AssertionError(f"bearer literal leaked through {channel}")
+    if completed.returncode != 0:
+        raise AssertionError(f"could not inspect {channel}")
+
+
+def _run_invalid_secret_launch(
+    *,
+    image: str,
+    bundle: Path,
+    state_dir: Path,
+    suffix: str,
+    extra_args: tuple[str, ...] = (),
+    secret_mode: int | None = None,
+    secret_uid: int = 10001,
+    secret_gid: int = 10001,
+    secret_readonly: bool = True,
+) -> tuple[int, str, str]:
+    _prepare_state(image, state_dir)
+    name = f"microduck-rom-task5-{os.getpid()}-{suffix}"
+    args = [
+        "docker",
+        "run",
+        "--name",
+        name,
+        "--user",
+        "10001:10001",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,size=64m",
+        "--mount",
+        f"type=bind,src={bundle},dst=/bundle,readonly",
+        "--mount",
+        f"type=bind,src={state_dir},dst=/state",
+    ]
+    if secret_mode is not None:
+        secret_file = _prepare_secret(
+            image,
+            state_dir.parent / f"{state_dir.name}-secret",
+            mode=secret_mode,
+            uid=secret_uid,
+            gid=secret_gid,
+        )
+        args.extend(
+            ("--mount", _secret_mount(secret_file, readonly=secret_readonly))
+        )
+    args.extend(("--detach", *extra_args, image))
+    _run("docker", "rm", "--force", name, check=False)
+    try:
+        started = _run(*args, check=False)
+        if started.returncode != 0:
+            raise AssertionError("Docker could not create rejected-secret fixture")
+        deadline = time.monotonic() + 10.0
+        inspected = _run("docker", "inspect", name)
+        while json.loads(inspected.stdout)[0]["State"]["Running"]:
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.05)
+            inspected = _run("docker", "inspect", name)
+        state = json.loads(inspected.stdout)[0]["State"]
+        exit_code = 0 if state["Running"] else int(state["ExitCode"])
+        logs = _run("docker", "logs", name, check=False)
+        evidence = (
+            started.stdout
+            + started.stderr
+            + inspected.stdout
+            + inspected.stderr
+            + logs.stdout
+            + logs.stderr
+        )
+        _assert_token_absent("rejected container evidence", evidence)
+        return exit_code, inspected.stdout, logs.stdout + logs.stderr
+    finally:
+        _run("docker", "rm", "--force", name, check=False)
+        _restore_state_ownership(image, state_dir)
+
+
+def _request(
+    base_url: str,
+    method: str,
+    path: str,
+    document: object | None = None,
+    *,
+    raw: bytes | None = None,
+    timeout: float = 20.0,
+) -> tuple[int, dict[str, object]]:
+    data = raw
+    headers = {"Authorization": f"Bearer {_TOKEN}"}
+    if document is not None:
+        data = json.dumps(document, separators=(",", ":")).encode()
+        headers["Content-Type"] = "application/json"
+    elif raw is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(
+        base_url + path, data=data, headers=headers, method=method
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read()
+            return response.status, json.loads(body) if body else {}
+    except urllib.error.HTTPError as exc:
+        body = exc.read()
+        return exc.code, json.loads(body) if body else {}
+
+
+def _post_after_slot_resolution(
+    container: _Container,
+    path: str,
+    document: object,
+    *,
+    expected_status: int,
+    timeout: float = 10.0,
+) -> tuple[int, dict[str, object]]:
+    """Retry only transient fail-closed readiness while delivery/reap completes."""
+    deadline = time.monotonic() + timeout
+    latest: tuple[int, dict[str, object]] = (0, {})
+    while time.monotonic() < deadline:
+        latest = _request(container.base_url, "POST", path, document)
+        if latest[0] == expected_status:
+            return latest
+        assert latest[0] == 503 and latest[1]["code"] == "NOT_READY"
+        time.sleep(0.01)
+    raise AssertionError(f"motion slot did not resolve: {latest}")
+
+
+def _bundle_identity(container: _Container) -> tuple[str, str]:
+    status, catalog = _request(container.base_url, "GET", "/v1/catalog")
+    assert status == 200
+    return str(catalog["bundleVersion"]), str(catalog["bundleDigest"])
+
+
+def _refresh_child(container: _Container) -> _Container:
+    """Resolve the sole live child after an autonomous terminal/replacement."""
+    parent_pid, descendants = _container_pids(container.name)
+    assert parent_pid == container.parent_pid
+    assert len(descendants) == 1
+    return _Container(
+        container.name,
+        container.image,
+        container.base_url,
+        container.state_dir,
+        container.parent_pid,
+        descendants[0],
+    )
+
+
+def _walk_request(container: _Container, task_id: str, lease_ms: int) -> dict[str, object]:
+    version, digest = _bundle_identity(container)
+    return {
+        "schema": "MICRODUCK_SIM_TASK_V1",
+        "taskId": task_id,
+        "actionCode": "WALK_VELOCITY",
+        "bundleVersion": version,
+        "bundleDigest": digest,
+        "parameters": {"vxMps": 0.0, "vyMps": 0.0, "yawRateRadps": 0.0},
+        "scenario": {"terrain": "flat", "seed": 7},
+        "leaseMs": lease_ms,
+        "requestedBy": "container-release-gate",
+    }
+
+
+def _stand_request(container: _Container, task_id: str) -> dict[str, object]:
+    version, digest = _bundle_identity(container)
+    return {
+        "schema": "MICRODUCK_SIM_TASK_V1",
+        "taskId": task_id,
+        "actionCode": "STAND",
+        "bundleVersion": version,
+        "bundleDigest": digest,
+        "parameters": {},
+        "scenario": {"terrain": "flat", "seed": 7},
+        "requestedBy": "container-release-gate",
+    }
+
+
+def _wait_task(
+    container: _Container, task_id: str, expected: set[str], timeout: float = 15.0
+) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    latest: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        status, latest = _request(
+            container.base_url, "GET", f"/v1/tasks/{task_id}"
+        )
+        if status == 200 and latest.get("state") in expected:
+            return latest
+        time.sleep(0.02)
+    raise AssertionError(f"task {task_id} did not reach {expected}: {latest}")
+
+
+def _wait_ready(container: _Container, expected: bool, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    latest: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        status, latest = _request(container.base_url, "GET", "/v1/ready")
+        if status == 200 and latest.get("ready") is expected:
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"readiness did not become {expected}: {latest}")
+
+
+def _wait_ready_reason(
+    container: _Container, reason: str, timeout: float = 15.0
+) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    latest: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        status, latest = _request(container.base_url, "GET", "/v1/ready")
+        if status == 200 and reason in latest.get("reasonCodes", []):
+            return latest
+        time.sleep(0.005)
+    raise AssertionError(f"readiness did not expose {reason}: {latest}")
+
+
+def _wait_event(
+    container: _Container, task_id: str, event_type: str, timeout: float = 10.0
+) -> None:
+    deadline = time.monotonic() + timeout
+    latest: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        status, latest = _request(
+            container.base_url,
+            "GET",
+            f"/v1/tasks/{task_id}/events?afterSequence=-1&pageSize=100",
+        )
+        if status == 200 and any(
+            event.get("eventType") == event_type
+            for event in latest.get("events", [])  # type: ignore[union-attr]
+        ):
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"event {event_type} was not observed: {latest}")
+
+
+def _assert_pidfd_dead(pidfd: int, timeout: float = 20.0) -> None:
+    try:
+        assert select.select([pidfd], [], [], timeout)[0] == [pidfd]
+    finally:
+        os.close(pidfd)
+
+
+def _assert_proc_absent(pid: int, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    path = Path(f"/proc/{pid}")
+    while path.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not path.exists(), f"PID {pid} exited but was not reaped"
+
+
+def _read_shutdown_evidence(container: _Container) -> dict[str, object]:
+    completed = _run(
+        "docker",
+        "run",
+        "--rm",
+        "--read-only",
+        "--user",
+        "0:0",
+        "--mount",
+        f"type=bind,src={container.state_dir},dst=/state,readonly",
+        "--entrypoint",
+        "/bin/cat",
+        container.image,
+        "/state/tasks.sqlite3.shutdown-v1.json",
+    )
+    return json.loads(completed.stdout)
+
+
+def _stop_and_assert_exact_reap(
+    container: _Container,
+    *,
+    child_pidfd: int | None = None,
+    require_ordered_evidence: bool = True,
+) -> int:
+    parent_pidfd = os.pidfd_open(container.parent_pid)
+    owned_child_pidfd = (
+        os.pidfd_open(container.child_pid) if child_pidfd is None else child_pidfd
+    )
+    child_namespace_pid = (
+        _namespace_pid(container.child_pid) if require_ordered_evidence else None
+    )
+    signalled = _run("docker", "kill", "--signal", "SIGTERM", container.name)
+    assert signalled.stdout.strip() == container.name
+    _assert_pidfd_dead(owned_child_pidfd)
+    _assert_pidfd_dead(parent_pidfd)
+    _assert_proc_absent(container.child_pid)
+    _assert_proc_absent(container.parent_pid)
+    inspected = json.loads(_run("docker", "inspect", container.name).stdout)[0]
+    assert inspected["State"]["Running"] is False
+    exit_code = int(inspected["State"]["ExitCode"])
+    if require_ordered_evidence:
+        evidence = _read_shutdown_evidence(container)
+        assert evidence["events"] == [
+            {"event": "CHILD_REAPED", "sequence": 0},
+            {"event": "PID1_EXITING", "sequence": 1},
+        ]
+        assert evidence["exitCode"] == exit_code
+        assert evidence["exactReapConfirmed"] is True
+        assert evidence["pid1Pid"] == 1
+        assert evidence["reapedChildPid"] == child_namespace_pid
+        assert evidence["schema"] == "MICRODUCK_ROM_PID1_SHUTDOWN_V1"
+        assert isinstance(evidence["childGeneration"], int)
+        assert evidence["childGeneration"] >= 1
+        assert isinstance(evidence["ownershipIdentity"], int)
+        assert evidence["ownershipIdentity"] >= 1
+    return exit_code
+
+
+def _remove_container(container: _Container) -> None:
+    _run("docker", "rm", "--force", container.name, check=False)
+    _restore_state_ownership(container.image, container.state_dir)
+
+
+def _remove_container_name(name: str) -> None:
+    _run("docker", "rm", "--force", name, check=False)
+
+
+def _restore_state_ownership(image: str, state_dir: Path) -> None:
+    """Return bind-mount files created by UID 10001 to the pytest host user."""
+    _run(
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--mount",
+        f"type=bind,src={state_dir},dst=/state",
+        "--entrypoint",
+        "/bin/chown",
+        image,
+        "-R",
+        f"{os.getuid()}:{os.getgid()}",
+        "/state",
+    )
+
+
+def _capture_request(
+    result: dict[str, object], key: str, *args: object, **kwargs: object
+) -> None:
+    try:
+        result[key] = _request(*args, **kwargs)  # type: ignore[arg-type]
+    except Exception as exc:  # noqa: BLE001 - records a deliberately severed request
+        result[key] = type(exc).__name__
+
+
+def _hold_state_write_lock(container: _Container) -> tuple[subprocess.Popen[str], int]:
+    """Hold SQLite's writer lock and return the exact added container PID."""
+    before = set(_container_pids(container.name)[1])
+    locker = subprocess.Popen(
+        [
+            "docker",
+            "exec",
+            "--interactive",
+            "--user",
+            "10001:10001",
+            container.name,
+            "/app/.venv/bin/python",
+            "-P",
+            "-c",
+            (
+                "import sqlite3,sys;"
+                "connection=sqlite3.connect('/state/tasks.sqlite3');"
+                "connection.execute('PRAGMA journal_mode=WAL');"
+                "connection.execute('BEGIN IMMEDIATE');"
+                "print('LOCKED',flush=True);"
+                "sys.stdin.read()"
+            ),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert locker.stdout is not None
+    readable, _, _ = select.select([locker.stdout], [], [], 5.0)
+    assert readable == [locker.stdout]
+    assert locker.stdout.readline().strip() == "LOCKED"
+    after = set(_container_pids(container.name)[1])
+    added = after - before
+    assert len(added) == 1
+    return locker, added.pop()
+
+
+def _host_copy_sources(dockerfile: str) -> set[str]:
+    logical = dockerfile.replace("\\\n", " ")
+    sources: set[str] = set()
+    for raw_line in logical.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("COPY "):
+            continue
+        parts = shlex.split(line)
+        if any(part.startswith("--from=") for part in parts[1:]):
+            continue
+        operands = [part for part in parts[1:] if not part.startswith("--")]
+        sources.update(operands[:-1])
+    return sources
+
+
+def test_docker_context_rejects_unknown_rom_python_module() -> None:
+    """A broad ROM wildcard would silently ship an unrelated debug or secret module."""
+    repository = Path(__file__).parents[1]
+    policies = (
+        repository / ".dockerignore",
+        repository / "docker/rom-simulator/Dockerfile.dockerignore",
+    )
+    for policy_path in policies:
+        policy = policy_path.read_text()
+        for unknown in (
+            "src/mjlab_microduck/rom/debug_secret.py",
+            "src/mjlab_microduck/rom/untracked_secret.py",
+        ):
+            assert not _docker_context_includes(policy, unknown)
+
+
+def test_docker_context_is_the_literal_runtime_inventory() -> None:
+    """Adding a repository or synthetic path cannot silently expand build input."""
+    repository = Path(__file__).parents[1]
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    representatives = {
+        *tracked,
+        *_REPOSITORY_FILES,
+        ".env",
+        "output/checkpoint.pt",
+        "src/mjlab_microduck/robot/microduck/assets/body.stl",
+        "src/mjlab_microduck/tasks/new_training.py",
+        "src/mjlab_microduck/rom/debug_secret.py",
+        "src/mjlab_microduck/rom/untracked_secret.py",
+        "tests/secret_fixture.bin",
+    }
+    policies = (
+        repository / ".dockerignore",
+        repository / "docker/rom-simulator/Dockerfile.dockerignore",
+    )
+
+    for policy_path in policies:
+        policy = policy_path.read_text()
+        included = {
+            path for path in representatives if _docker_context_includes(policy, path)
+        }
+        assert included == _REPOSITORY_FILES
+
+
+def test_dockerfile_copies_only_literal_host_files() -> None:
+    """A directory or wildcard COPY would defeat review of the image inventory."""
+    dockerfile = (
+        Path(__file__).parents[1] / "docker/rom-simulator/Dockerfile"
+    ).read_text()
+    assert _host_copy_sources(dockerfile) == _REPOSITORY_FILES
+
+
+def test_container_metadata_declares_linux_signal_and_nonroot_contract() -> None:
+    """Removing explicit stop/user metadata would make operator lifecycle ambiguous."""
+    dockerfile = (
+        Path(__file__).parents[1] / "docker/rom-simulator/Dockerfile"
+    ).read_text()
+    assert "USER 10001:10001" in dockerfile
+    assert "STOPSIGNAL SIGTERM" in dockerfile
+    assert "PYTHONPATH=" not in dockerfile
+    assert "install -d -o 0 -g 0 -m 0755 /usr/local/libexec" in dockerfile
+    entrypoint = (
+        Path(__file__).parents[1] / "docker/rom-simulator/entrypoint.sh"
+    ).read_text()
+    assert "exec python -P /usr/local/libexec/microduck-rom-pid1.py" in entrypoint
+    bootstrap = (
+        Path(__file__).parents[1] / "docker/rom-simulator/pid1_bootstrap.py"
+    ).read_text()
+    assert bootstrap.index("signal.signal(signal.SIGTERM") < bootstrap.index(
+        "from mjlab_microduck.rom.main import main"
+    )
+    assert bootstrap.index(".microduck-pid1-sigterm-ready") < bootstrap.index(
+        "from mjlab_microduck.rom.main import main"
+    )
+
+
+def test_built_image_contains_only_literal_runtime_source_inventory(
+    tmp_path: Path,
+) -> None:
+    """The release gate sets the image variable so final layers, not mocks, are audited."""
+    image = os.environ.get("MICRODUCK_ROM_CONTAINER_TEST_IMAGE")
+    if not image:
+        pytest.skip("set MICRODUCK_ROM_CONTAINER_TEST_IMAGE after the Docker build")
+    state = tmp_path / "state"
+    shadow = state / "mjlab_microduck"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text(
+        "raise RuntimeError('writable-state package shadow executed')\n"
+    )
+    completed = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--mount",
+            f"type=bind,src={state},dst=/state",
+            "--workdir",
+            "/state",
+            "--entrypoint",
+            "/app/.venv/bin/python",
+            image,
+            "-P",
+            "-c",
+            (
+                "import importlib.metadata,json,pathlib,re,sys;"
+                "import mjlab_microduck;"
+                "root=pathlib.Path('/app');"
+                "files=sorted(p.relative_to(root).as_posix() "
+                "for p in root.rglob('*') if p.is_file() "
+                "and '.venv' not in p.relative_to(root).parts);"
+                "dists=sorted({re.sub(r'[-_.]+','-',d.metadata['Name']).lower() "
+                "for d in importlib.metadata.distributions()});"
+                "entry=pathlib.Path('/usr/local/bin/rom-entrypoint');"
+                "print(json.dumps({'appFiles':files,'distributions':dists,"
+                "'entrypointMode':entry.stat().st_mode&0o777,"
+                "'packageOrigin':pathlib.Path(mjlab_microduck.__file__).resolve()"
+                ".as_posix(),'sysPath':sys.path},separators=(',',':')))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    inventory = json.loads(completed.stdout)
+    assert frozenset(inventory["appFiles"]) == _IMAGE_RUNTIME_FILES
+    assert frozenset(inventory["distributions"]) == _IMAGE_DISTRIBUTIONS
+    assert inventory["entrypointMode"] == 0o755
+    assert str(inventory["packageOrigin"]).startswith("/app/src/mjlab_microduck/")
+    assert "/state" not in inventory["sysPath"]
+
+    metadata = subprocess.run(
+        ["docker", "image", "inspect", image],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    inspected = json.loads(metadata.stdout)[0]
+    assert inspected["Os"] == "linux"
+    assert inspected["Config"]["User"] == "10001:10001"
+    assert inspected["Config"]["StopSignal"] == "SIGTERM"
+    assert inspected["Config"]["Entrypoint"] == [
+        "/usr/local/bin/rom-entrypoint"
+    ]
+    assert not any(
+        item.startswith("PYTHONPATH=") for item in inspected["Config"]["Env"]
+    )
+
+
+def test_persisted_evidence_leak_failure_names_only_stable_channel(
+    tmp_path: Path,
+) -> None:
+    """Echoing captured evidence on failure would disclose the bearer a second time."""
+    image = os.environ.get("MICRODUCK_ROM_CONTAINER_TEST_IMAGE")
+    if not image:
+        pytest.skip("set MICRODUCK_ROM_CONTAINER_TEST_IMAGE for evidence scanning")
+    planted = tmp_path / "planted-evidence"
+    planted.write_text(_TOKEN)
+
+    with pytest.raises(AssertionError) as caught:
+        _assert_mounted_evidence_has_no_token(
+            image, planted, "persisted test evidence"
+        )
+
+    assert str(caught.value) == "bearer literal leaked through persisted test evidence"
+    assert _TOKEN not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected_error"),
+    (
+        (
+            "readiness",
+            "bearer literal leaked through container readiness response",
+        ),
+        ("startup-logs", "bearer literal leaked through container startup logs"),
+    ),
+)
+def test_launch_leak_failure_removes_container_and_restores_state_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    expected_error: str,
+) -> None:
+    """A pre-return security failure must not strand mounted secret material."""
+    image, bundle = _release_inputs(tmp_path)
+    suffix = f"cleanup-{channel}"
+    name = f"microduck-rom-task5-{os.getpid()}-{suffix}"
+    state_dir = tmp_path / f"state-{channel}"
+    real_run = _run
+
+    if channel == "readiness":
+        monkeypatch.setattr(
+            "tests.test_rom_process_container._request",
+            lambda *_args, **_kwargs: (503, {"detail": _TOKEN}),
+        )
+    else:
+        monotonic_values = iter((0.0, 31.0))
+        monkeypatch.setattr(
+            "tests.test_rom_process_container.time.monotonic",
+            lambda: next(monotonic_values),
+        )
+
+        def run_with_planted_logs(
+            *args: str, check: bool = True
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ("docker", "logs"):
+                return subprocess.CompletedProcess(args, 0, "", _TOKEN)
+            return real_run(*args, check=check)
+
+        monkeypatch.setattr(
+            "tests.test_rom_process_container._run", run_with_planted_logs
+        )
+
+    try:
+        with pytest.raises(AssertionError) as caught:
+            _launch_container(
+                image=image,
+                bundle=bundle,
+                state_dir=state_dir,
+                suffix=suffix,
+            )
+
+        assert str(caught.value) == expected_error
+        assert _TOKEN not in str(caught.value)
+        container_absent = (
+            real_run("docker", "inspect", name, check=False).returncode != 0
+        )
+        ownership_restored = (
+            state_dir.stat().st_uid,
+            state_dir.stat().st_gid,
+        ) == (os.getuid(), os.getgid())
+        assert (container_absent, ownership_restored) == (True, True)
+    finally:
+        real_run("docker", "rm", "--force", name, check=False)
+        if state_dir.exists():
+            _restore_state_ownership(image, state_dir)
+
+
+@pytest.mark.parametrize(
+    ("failure_point", "expected_error"),
+    (
+        ("marker", "PID 1 did not publish its pre-import SIGTERM barrier"),
+        ("pid", "container PID inspection failed"),
+    ),
+)
+def test_no_wait_launch_failure_removes_container_and_restores_state_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+    expected_error: str,
+) -> None:
+    """Marker/PID failures before return must not strand a container or state mount."""
+    suffix = f"no-wait-{failure_point}"
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    state_dir = tmp_path / "state"
+    live_containers: set[str] = set()
+    restored_state: set[Path] = set()
+
+    def prepare_state(_image: str, path: Path) -> None:
+        path.mkdir()
+
+    def prepare_secret(_image: str, secret_dir: Path, **_kwargs: object) -> Path:
+        secret_dir.mkdir()
+        secret = secret_dir / "bearer"
+        secret.write_text("opaque fixture")
+        return secret
+
+    def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        del check
+        if args[:3] == ("docker", "rm", "--force"):
+            live_containers.discard(args[3])
+            return subprocess.CompletedProcess(args, 0, _TOKEN, "")
+        if args[:2] == ("docker", "run"):
+            live_containers.add(args[args.index("--name") + 1])
+            return subprocess.CompletedProcess(args, 0, "fixture-container-id", "")
+        if args[:2] == ("docker", "exec"):
+            return subprocess.CompletedProcess(
+                args, 1 if failure_point == "marker" else 0, "", ""
+            )
+        raise AssertionError("unexpected fake Docker operation")
+
+    def container_pids(_name: str) -> tuple[int, tuple[int, ...]]:
+        if failure_point == "pid":
+            raise AssertionError("container PID inspection failed")
+        return 101, ()
+
+    def restore_state(_image: str, path: Path) -> None:
+        restored_state.add(path)
+
+    monotonic_values = iter((0.0, 6.0) if failure_point == "marker" else (0.0, 0.0))
+    monkeypatch.setattr(
+        "tests.test_rom_process_container._prepare_state", prepare_state
+    )
+    monkeypatch.setattr(
+        "tests.test_rom_process_container._prepare_secret", prepare_secret
+    )
+    monkeypatch.setattr("tests.test_rom_process_container._run", run)
+    monkeypatch.setattr(
+        "tests.test_rom_process_container._container_pids", container_pids
+    )
+    monkeypatch.setattr(
+        "tests.test_rom_process_container._restore_state_ownership", restore_state
+    )
+    monkeypatch.setattr(
+        "tests.test_rom_process_container.time.monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    with pytest.raises(AssertionError) as caught:
+        _launch_without_readiness_wait(
+            image="fixture-image",
+            bundle=bundle,
+            state_dir=state_dir,
+            suffix=suffix,
+        )
+
+    assert str(caught.value) == expected_error
+    assert _TOKEN not in str(caught.value)
+    assert live_containers == set()
+    assert restored_state == {state_dir}
+
+
+def test_failed_launch_cleanup_error_does_not_echo_captured_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup diagnostics must not replace or disclose a security failure."""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    def fail_with_captured_output(*_args: str, **_kwargs: object) -> None:
+        raise RuntimeError(_TOKEN)
+
+    monkeypatch.setattr(
+        "tests.test_rom_process_container._run", fail_with_captured_output
+    )
+    failure = AssertionError("bearer literal leaked through stable channel")
+
+    _cleanup_failed_container_launch(
+        image="unused-image",
+        state_dir=state_dir,
+        name="unused-container",
+        failure=failure,
+    )
+
+    diagnostic = "\n".join((str(failure), *getattr(failure, "__notes__", ())))
+    assert diagnostic == (
+        "bearer literal leaked through stable channel\n"
+        "container startup cleanup did not complete"
+    )
+    assert _TOKEN not in diagnostic
+
+
+@pytest.mark.parametrize(
+    ("suffix", "extra_args", "secret_mode", "expected_log"),
+    (
+        (
+            "direct-env-secret",
+            (f"--env={_DIRECT_TOKEN_ENV}=",),
+            0o400,
+            "direct bearer environment input is forbidden",
+        ),
+        (
+            "missing-secret",
+            (),
+            None,
+            "bearer secret file is invalid",
+        ),
+        (
+            "wrong-secret-path",
+            ("--env=MICRODUCK_ROM_BEARER_TOKEN_FILE=/run/secrets/wrong",),
+            0o400,
+            "fixed bearer secret file is required",
+        ),
+    ),
+)
+def test_production_container_rejects_nonmounted_bearer_sources_with_exit_64(
+    tmp_path: Path,
+    suffix: str,
+    extra_args: tuple[str, ...],
+    secret_mode: int | None,
+    expected_log: str,
+) -> None:
+    """A removed entrypoint check would let an unsafe credential source reach Python."""
+    image, bundle = _release_inputs(tmp_path)
+
+    returncode, inspected_text, logs = _run_invalid_secret_launch(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / f"state-{suffix}",
+        suffix=suffix,
+        extra_args=extra_args,
+        secret_mode=secret_mode,
+    )
+
+    assert returncode == 64
+    inspected = json.loads(inspected_text)[0]
+    assert inspected["State"]["ExitCode"] == 64
+    assert expected_log in logs
+
+
+def test_production_container_rejects_permissive_secret_before_api_startup(
+    tmp_path: Path,
+) -> None:
+    """Weakening the Python mode check would start the API with group-readable bytes."""
+    image, bundle = _release_inputs(tmp_path)
+
+    returncode, inspected_text, logs = _run_invalid_secret_launch(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state-permissive-secret",
+        suffix="permissive-secret",
+        secret_mode=0o440,
+    )
+
+    assert returncode != 0
+    inspected = json.loads(inspected_text)[0]
+    assert inspected["State"]["ExitCode"] != 0
+    assert "bearer token file must be owner-only" in logs
+    assert "Uvicorn running" not in logs
+
+
+@pytest.mark.parametrize(
+    (
+        "suffix",
+        "secret_mode",
+        "secret_uid",
+        "secret_gid",
+        "secret_readonly",
+        "message",
+    ),
+    (
+        (
+            "wrong-secret-uid",
+            0o040,
+            10002,
+            10001,
+            True,
+            "bearer token file ownership must match process identity",
+        ),
+        (
+            "wrong-secret-gid",
+            0o400,
+            10001,
+            10002,
+            True,
+            "bearer token file ownership must match process identity",
+        ),
+        (
+            "writable-secret-mount",
+            0o400,
+            10001,
+            10001,
+            False,
+            "bearer token file must be a read-only bind mount",
+        ),
+    ),
+)
+def test_production_container_rejects_wrong_secret_identity_or_writable_mount(
+    tmp_path: Path,
+    suffix: str,
+    secret_mode: int,
+    secret_uid: int,
+    secret_gid: int,
+    secret_readonly: bool,
+    message: str,
+) -> None:
+    """Dropping descriptor identity or mount checks would start with unsafe bytes."""
+    image, bundle = _release_inputs(tmp_path)
+
+    returncode, inspected_text, logs = _run_invalid_secret_launch(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / f"state-{suffix}",
+        suffix=suffix,
+        secret_mode=secret_mode,
+        secret_uid=secret_uid,
+        secret_gid=secret_gid,
+        secret_readonly=secret_readonly,
+    )
+
+    assert returncode != 0
+    inspected = json.loads(inspected_text)[0]
+    assert inspected["State"]["ExitCode"] != 0
+    assert message in logs
+    assert "Uvicorn running" not in logs
+
+
+def test_production_container_mounted_secret_authenticates_without_leaking_metadata(
+    tmp_path: Path,
+) -> None:
+    """Replacing the file mount with env/argv input would expose the bearer to Docker."""
+    image, bundle = _release_inputs(tmp_path)
+    container = _launch_container(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state-secret-metadata",
+        suffix="secret-metadata",
+    )
+    try:
+        status, ready = _request(container.base_url, "GET", "/v1/ready")
+        assert status == 200
+        assert ready["ready"] is True
+
+        image_inspect_result = _run("docker", "image", "inspect", image)
+        image_inspect = image_inspect_result.stdout
+        history_result = _run(
+            "docker", "history", "--no-trunc", "--format", "{{json .}}", image
+        )
+        history = history_result.stdout + history_result.stderr
+        container_inspect_result = _run("docker", "inspect", container.name)
+        container_inspect = container_inspect_result.stdout
+        top_result = _run(
+            "docker", "top", container.name, "-eo", "pid,ppid,args"
+        )
+        top = top_result.stdout + top_result.stderr
+        log_result = _run("docker", "logs", container.name)
+        logs = log_result.stdout + log_result.stderr
+        for channel, evidence in (
+            ("image history", history),
+            (
+                "image config",
+                image_inspect_result.stdout + image_inspect_result.stderr,
+            ),
+            (
+                "container Config.Env and Config.Cmd",
+                container_inspect_result.stdout + container_inspect_result.stderr,
+            ),
+            (
+                "container Path and Args",
+                container_inspect_result.stdout + container_inspect_result.stderr,
+            ),
+            ("docker top", top),
+            ("container logs", logs),
+        ):
+            _assert_token_absent(channel, evidence)
+
+        image_metadata = json.loads(image_inspect)[0]
+        image_environment = image_metadata["Config"]["Env"]
+        assert (
+            f"MICRODUCK_ROM_BEARER_TOKEN_FILE={_SECRET_CONTAINER_PATH}"
+            in image_environment
+        )
+        assert not any(
+            item.startswith(f"{_DIRECT_TOKEN_ENV}=")
+            for item in image_environment
+        )
+
+        container_metadata = json.loads(container_inspect)[0]
+        assert container_metadata["Config"]["Cmd"] in (None, [])
+        assert container_metadata["Path"] == "/usr/local/bin/rom-entrypoint"
+        assert container_metadata["Args"] == []
+        secret_mount = next(
+            item
+            for item in container_metadata["Mounts"]
+            if item["Destination"] == _SECRET_CONTAINER_PATH
+        )
+        assert secret_mount["Type"] == "bind"
+        assert secret_mount["RW"] is False
+        secret_metadata = _run(
+            "docker",
+            "exec",
+            "--user",
+            "10001:10001",
+            container.name,
+            "/usr/bin/stat",
+            "--format=%u:%g:%a",
+            _SECRET_CONTAINER_PATH,
+        ).stdout.strip()
+        assert secret_metadata == "10001:10001:400"
+    finally:
+        _remove_container(container)
+
+
+def test_authenticated_activity_leaves_no_bearer_in_state_shutdown_or_handoff(
+    tmp_path: Path,
+) -> None:
+    """Persisting request authorization would leak the bearer beyond container memory."""
+    image, bundle = _release_inputs(tmp_path)
+    handoff = tmp_path / "cleared-handoff.zip"
+    materialize_distribution_bundle(bundle, handoff)
+    container = _launch_container(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state-persistence-leak",
+        suffix="persistence-leak",
+    )
+    try:
+        task_id = "a" * 32
+        status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, task_id, 5_000),
+        )
+        assert status == 202
+        _wait_task(container, task_id, {"RUNNING"})
+        status, cancelled = _request(
+            container.base_url, "POST", f"/v1/tasks/{task_id}/cancel"
+        )
+        assert status == 200
+        assert cancelled["state"] == "CANCELLED"
+        _wait_task(container, task_id, {"CANCELLED"})
+
+        assert _stop_and_assert_exact_reap(container) == 0
+        logs = _run("docker", "logs", container.name)
+        _assert_token_absent("post-shutdown container logs", logs.stdout + logs.stderr)
+        _assert_mounted_evidence_has_no_token(
+            image,
+            container.state_dir / "tasks.sqlite3",
+            "SQLite state database",
+        )
+        _assert_mounted_evidence_has_no_token(
+            image, container.state_dir, "persisted simulator state"
+        )
+        _assert_mounted_evidence_has_no_token(
+            image,
+            container.state_dir / "tasks.sqlite3.shutdown-v1.json",
+            "shutdown evidence",
+        )
+        _assert_mounted_evidence_has_no_token(
+            image, handoff, "cleared handoff output"
+        )
+    finally:
+        _remove_container(container)
+
+
+def test_immediate_docker_stop_is_caught_before_application_import(
+    tmp_path: Path,
+) -> None:
+    """The PID-1 bootstrap must own SIGTERM from the first runnable instruction."""
+    image, bundle = _release_inputs(tmp_path)
+    name, parent_pid, descendants = _launch_without_readiness_wait(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state",
+        suffix="immediate-stop",
+    )
+    parent_pidfd = os.pidfd_open(parent_pid)
+    descendant_handles = [(pid, os.pidfd_open(pid)) for pid in descendants]
+    try:
+        stopped = _run("docker", "stop", "--timeout", "60", name)
+        assert stopped.stdout.strip() == name
+        _assert_pidfd_dead(parent_pidfd)
+        _assert_proc_absent(parent_pid)
+        for pid, pidfd in descendant_handles:
+            _assert_pidfd_dead(pidfd)
+            _assert_proc_absent(pid)
+        inspected = json.loads(_run("docker", "inspect", name).stdout)[0]
+        assert inspected["State"]["ExitCode"] == 0
+    finally:
+        _remove_container_name(name)
+        _restore_state_ownership(image, tmp_path / "state")
+
+
+def test_real_read_only_container_api_and_child_replacement_matrix(
+    tmp_path: Path,
+) -> None:
+    """Exercise the release image and actual native child; mocks are not evidence."""
+    image, bundle = _release_inputs(tmp_path)
+    container = _launch_container(
+        image=image, bundle=bundle, state_dir=tmp_path / "state", suffix="matrix"
+    )
+    try:
+        unauthenticated = urllib.request.Request(container.base_url + "/v1/ready")
+        with pytest.raises(urllib.error.HTTPError) as denied:
+            urllib.request.urlopen(unauthenticated, timeout=5)
+        assert denied.value.code == 401
+
+        status, catalog = _request(container.base_url, "GET", "/v1/catalog")
+        assert status == 200
+        actions = {item["actionCode"]: item for item in catalog["actions"]}  # type: ignore[index]
+        assert len(actions) == 15
+        assert actions["STAND"]["availability"] == "AVAILABLE"
+        assert actions["WALK_VELOCITY"]["availability"] == "AVAILABLE"
+        assert actions["SPIN"]["availability"] == "UNAVAILABLE"
+
+        parent_internal_pid = _namespace_pid(container.parent_pid)
+        child_internal_pid = _namespace_pid(container.child_pid)
+        parent_maps = _container_proc_maps(container.name, parent_internal_pid)
+        child_maps = _container_proc_maps(container.name, child_internal_pid)
+        assert "libmujoco" not in parent_maps
+        assert "onnxruntime" not in parent_maps
+        assert "libmujoco" in child_maps
+        assert "onnxruntime" in child_maps
+
+        stand_id = "1" * 32
+        created_status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _stand_request(container, stand_id),
+        )
+        assert created_status == 202
+        stand = _wait_task(container, stand_id, {"SUCCEEDED"})
+        assert stand["stopReason"] == "STAND_POSE_SETTLED"
+        event_status, event_page = _request(
+            container.base_url,
+            "GET",
+            f"/v1/tasks/{stand_id}/events?afterSequence=-1&pageSize=100",
+        )
+        assert event_status == 200
+        assert event_page["events"][0]["sequence"] == 0  # type: ignore[index]
+
+        walk_timeout_id = "2" * 32
+        created_status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, walk_timeout_id, 200),
+        )
+        assert created_status == 202
+        timed_out = _wait_task(container, walk_timeout_id, {"TIMED_OUT"})
+        assert timed_out["stopReason"] == "LEASE_EXPIRED"
+
+        spin_id = "3" * 32
+        spin = _stand_request(container, spin_id) | {"actionCode": "SPIN"}
+        rejected_status, rejected = _post_after_slot_resolution(
+            container,
+            "/v1/tasks",
+            spin,
+            expected_status=400,
+        )
+        assert rejected_status == 400
+        assert rejected["code"] == "ACTION_UNAVAILABLE"
+
+        oversized_status, oversized = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            raw=b"{" + b"x" * 65_536,
+        )
+        assert oversized_status == 413
+        assert oversized["code"] == "REQUEST_BODY_TOO_LARGE"
+
+        blocked_id = "4" * 32
+        container = _refresh_child(container)
+        created_status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, blocked_id, 5_000),
+        )
+        assert created_status == 202
+        _wait_task(container, blocked_id, {"RUNNING"})
+        _signal_container_pid(container, container.child_pid, signal.SIGSTOP)
+        blocked_result: dict[str, object] = {}
+        canceller = threading.Thread(
+            target=_capture_request,
+            args=(
+                blocked_result,
+                "cancel",
+                container.base_url,
+                "POST",
+                f"/v1/tasks/{blocked_id}/cancel",
+            ),
+            daemon=True,
+        )
+        canceller.start()
+        _wait_event(container, blocked_id, "TASK_CANCEL_REQUESTED")
+        _signal_container_pid(container, container.child_pid, signal.SIGCONT)
+        canceller.join(timeout=15)
+        assert not canceller.is_alive()
+        assert blocked_result["cancel"][0] == 200  # type: ignore[index]
+        cancelled = _wait_task(container, blocked_id, {"CANCELLED"})
+        assert cancelled["stopReason"] == "CANCELLED"
+
+        killed_id = "5" * 32
+        created_status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, killed_id, 5_000),
+        )
+        assert created_status == 202
+        killed_pid = container.child_pid
+        killed_pidfd = os.pidfd_open(killed_pid)
+        _signal_container_pid(container, killed_pid, signal.SIGKILL)
+        _assert_pidfd_dead(killed_pidfd)
+        _assert_proc_absent(killed_pid)
+        failed = _wait_task(container, killed_id, {"FAILED"})
+        assert failed["stopReason"] == "RUNTIME_UNRESPONSIVE"
+
+        fresh_id = "6" * 32
+        created_status, _created = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, fresh_id, 5_000),
+        )
+        assert created_status == 202
+        _parent_pid, descendants = _container_pids(container.name)
+        assert len(descendants) == 1 and descendants[0] != killed_pid
+        cancel_status, _cancelled = _request(
+            container.base_url, "POST", f"/v1/tasks/{fresh_id}/cancel"
+        )
+        assert cancel_status == 200
+        _wait_task(container, fresh_id, {"CANCELLED"})
+        container = _Container(
+            container.name,
+            container.image,
+            container.base_url,
+            container.state_dir,
+            container.parent_pid,
+            descendants[0],
+        )
+        assert _stop_and_assert_exact_reap(container) == 0
+    finally:
+        try:
+            _signal_container_pid(
+                container,
+                container.child_pid,
+                signal.SIGCONT,
+                check=False,
+            )
+        except (FileNotFoundError, StopIteration):
+            pass
+        _remove_container(container)
+
+
+def test_real_container_cancel_queued_while_exact_child_start_is_blocked(
+    tmp_path: Path,
+) -> None:
+    """Final-image cancellation crosses a START held at the inherited IPC receiver."""
+    image, bundle = _release_inputs(tmp_path)
+    container = _launch_container(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state",
+        suffix="cancel-blocked-start",
+    )
+    old_pid = container.child_pid
+    old_pidfd = os.pidfd_open(old_pid)
+    create_result: dict[str, object] = {}
+    cancel_result: dict[str, object] = {}
+    try:
+        _cross_idle_child_protocol_barrier(container)
+        _signal_container_pid(container, old_pid, signal.SIGSTOP)
+        task_id = "c" * 32
+        creator = threading.Thread(
+            target=_capture_request,
+            args=(
+                create_result,
+                "create",
+                container.base_url,
+                "POST",
+                "/v1/tasks",
+                _walk_request(container, task_id, 5_000),
+            ),
+            daemon=True,
+        )
+        creator.start()
+        validating = _wait_task(container, task_id, {"VALIDATING"})
+        assert validating["state"] == "VALIDATING"
+        _wait_ready(container, False)
+
+        canceller = threading.Thread(
+            target=_capture_request,
+            args=(
+                cancel_result,
+                "cancel",
+                container.base_url,
+                "POST",
+                f"/v1/tasks/{task_id}/cancel",
+            ),
+            daemon=True,
+        )
+        canceller.start()
+        assert creator.is_alive() and canceller.is_alive()
+
+        blocked_id = "d" * 32
+        blocked_status, blocked = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, blocked_id, 5_000),
+        )
+        assert blocked_status == 409
+        assert blocked["code"] == "ROBOT_BUSY"
+
+        _signal_container_pid(container, old_pid, signal.SIGCONT)
+        creator.join(timeout=20)
+        canceller.join(timeout=20)
+        assert not creator.is_alive() and not canceller.is_alive()
+        assert create_result["create"][0] == 202  # type: ignore[index]
+        assert cancel_result["cancel"][0] == 200  # type: ignore[index]
+        assert cancel_result["cancel"][1]["state"] == "FAILED"  # type: ignore[index]
+        cancelled = _wait_task(container, task_id, {"FAILED"})
+        assert cancelled["stopReason"] == "RUNTIME_UNRESPONSIVE"
+        _wait_event(container, task_id, "TASK_CANCEL_REQUESTED")
+
+        _assert_pidfd_dead(old_pidfd)
+        old_pidfd = -1
+        _assert_proc_absent(old_pid)
+
+        fresh_status, _fresh = _post_after_slot_resolution(
+            container,
+            "/v1/tasks",
+            _walk_request(container, blocked_id, 5_000),
+            expected_status=202,
+        )
+        assert fresh_status == 202
+        parent_pid, descendants = _container_pids(container.name)
+        assert parent_pid == container.parent_pid
+        assert len(descendants) == 1
+        assert descendants[0] != old_pid
+        container = _Container(
+            container.name,
+            container.image,
+            container.base_url,
+            container.state_dir,
+            container.parent_pid,
+            descendants[0],
+        )
+        cancel_status, _cancelled = _request(
+            container.base_url, "POST", f"/v1/tasks/{blocked_id}/cancel"
+        )
+        assert cancel_status == 200
+        _wait_task(container, blocked_id, {"CANCELLED"})
+        assert _stop_and_assert_exact_reap(container) == 0
+    finally:
+        if old_pidfd >= 0:
+            os.close(old_pidfd)
+        try:
+            _signal_container_pid(container, old_pid, signal.SIGCONT, check=False)
+        except (FileNotFoundError, StopIteration):
+            pass
+        _remove_container(container)
+
+
+def test_container_shutdown_surfaces_blocked_terminal_callback_and_reaps_all(
+    tmp_path: Path,
+) -> None:
+    """Shutdown failure stays visible while child and callback locker are contained."""
+    image, bundle = _release_inputs(tmp_path)
+    container = _launch_container(
+        image=image,
+        bundle=bundle,
+        state_dir=tmp_path / "state",
+        suffix="callback-delivery",
+    )
+    locker: subprocess.Popen[str] | None = None
+    locker_pidfd: int | None = None
+    locker_pid: int | None = None
+    child_pidfd: int | None = None
+    restarted: _Container | None = None
+    try:
+        task_id = "b" * 32
+        baseline_busy_threads = sum(
+            "hrtimer_nanosleep" in item for item in _parent_wchans(container)
+        )
+        status, _body = _request(
+            container.base_url,
+            "POST",
+            "/v1/tasks",
+            _walk_request(container, task_id, 1_000),
+        )
+        assert status == 202
+        _wait_task(container, task_id, {"RUNNING"})
+        locker, locker_pid = _hold_state_write_lock(container)
+        locker_pidfd = os.pidfd_open(locker_pid)
+        child_pidfd = os.pidfd_open(container.child_pid)
+        assert select.select([child_pidfd], [], [], 5.0)[0] == [child_pidfd]
+        assert Path(f"/proc/{container.parent_pid}").exists()
+        _wait_parent_wchan_count(
+            container, "hrtimer_nanosleep", baseline_busy_threads + 1
+        )
+        exit_code = _stop_and_assert_exact_reap(
+            container,
+            child_pidfd=child_pidfd,
+            require_ordered_evidence=False,
+        )
+        child_pidfd = None
+        assert exit_code == 70
+        _assert_pidfd_dead(locker_pidfd)
+        locker_pidfd = None
+        _assert_proc_absent(locker_pid)
+        locker.wait(timeout=10)
+        restarted = _launch_container(
+            image=image,
+            bundle=bundle,
+            state_dir=container.state_dir,
+            suffix="callback-delivery-restart",
+        )
+        reconciled = _wait_task(restarted, task_id, {"UNKNOWN"})
+        assert reconciled["stopReason"] is None
+        event_status, event_page = _request(
+            restarted.base_url,
+            "GET",
+            f"/v1/tasks/{task_id}/events?afterSequence=-1&pageSize=100",
+        )
+        assert event_status == 200
+        assert event_page["events"][-1]["eventType"] == "TASK_INTERRUPTED"  # type: ignore[index]
+        assert _stop_and_assert_exact_reap(restarted) == 0
+    finally:
+        if child_pidfd is not None:
+            os.close(child_pidfd)
+        if locker_pidfd is not None:
+            os.close(locker_pidfd)
+        if locker is not None and locker.poll() is None:
+            locker.kill()
+            locker.wait(timeout=5)
+        if restarted is not None:
+            _remove_container(restarted)
+        _remove_container(container)
+
+
+@pytest.mark.parametrize(
+    "phase", ["START", "RUNNING", "STOPPING", "QUARANTINED"]
+)
+def test_container_sigterm_reaps_exact_child_and_restart_reconciles_unknown(
+    tmp_path: Path, phase: str
+) -> None:
+    """PID1 shutdown contains the exact child in every motion lifecycle phase."""
+    image, bundle = _release_inputs(tmp_path)
+    state_dir = tmp_path / "state"
+    container = _launch_container(
+        image=image,
+        bundle=bundle,
+        state_dir=state_dir,
+        suffix=f"shutdown-{phase.lower()}",
+    )
+    task_id = {
+        "START": "7",
+        "RUNNING": "8",
+        "STOPPING": "9",
+        "QUARANTINED": "a",
+    }[phase] * 32
+    request_result: dict[str, object] = {}
+    operation: threading.Thread | None = None
+    child_pidfd: int | None = None
+    try:
+        if phase == "START":
+            _signal_container_pid(container, container.child_pid, signal.SIGSTOP)
+            operation = threading.Thread(
+                target=_capture_request,
+                args=(
+                    request_result,
+                    "create",
+                    container.base_url,
+                    "POST",
+                    "/v1/tasks",
+                    _walk_request(container, task_id, 5_000),
+                ),
+                daemon=True,
+            )
+            operation.start()
+            _wait_task(container, task_id, {"VALIDATING"})
+            _wait_ready(container, False)
+        else:
+            status, _body = _request(
+                container.base_url,
+                "POST",
+                "/v1/tasks",
+                _walk_request(container, task_id, 5_000),
+            )
+            assert status == 202
+            _wait_task(container, task_id, {"RUNNING"})
+            if phase == "STOPPING":
+                _signal_container_pid(
+                    container, container.child_pid, signal.SIGSTOP
+                )
+                operation = threading.Thread(
+                    target=_capture_request,
+                    args=(
+                        request_result,
+                        "cancel",
+                        container.base_url,
+                        "POST",
+                        f"/v1/tasks/{task_id}/cancel",
+                    ),
+                    daemon=True,
+                )
+                operation.start()
+                _wait_event(container, task_id, "TASK_CANCEL_REQUESTED")
+            elif phase == "QUARANTINED":
+                child_pidfd = os.pidfd_open(container.child_pid)
+                # The preceding 202/RUNNING result is the production START ACK
+                # barrier for this exact child; freeze it before the next packet.
+                _signal_container_pid(
+                    container, container.child_pid, signal.SIGSTOP
+                )
+                operation = threading.Thread(
+                    target=_capture_request,
+                    args=(
+                        request_result,
+                        "command",
+                        container.base_url,
+                        "PUT",
+                        f"/v1/tasks/{task_id}/command",
+                        {
+                            "commandSequence": 1,
+                            "parameters": {
+                                "vxMps": 0.0,
+                                "vyMps": 0.0,
+                                "yawRateRadps": 0.0,
+                            },
+                            "leaseMs": 5_000,
+                        },
+                    ),
+                    daemon=True,
+                )
+                operation.start()
+                assert child_pidfd is not None
+                ready = _wait_ready_reason(
+                    container, "OPERATION_TIMEOUT", timeout=30.0
+                )
+                assert ready["ready"] is False
+                assert select.select([child_pidfd], [], [], 0.0)[0] == []
+
+            assert _stop_and_assert_exact_reap(
+                container,
+                child_pidfd=child_pidfd,
+                require_ordered_evidence=phase != "QUARANTINED",
+            ) == 0
+        child_pidfd = None
+        if operation is not None:
+            operation.join(timeout=20)
+            assert not operation.is_alive()
+            if phase == "QUARANTINED":
+                result = request_result.get("command")
+                assert isinstance(result, tuple), result
+                assert result[0] == 503
+
+        restarted = _launch_container(
+            image=image,
+            bundle=bundle,
+            state_dir=state_dir,
+            suffix=f"restart-{phase.lower()}",
+        )
+        try:
+            expected_state = (
+                {"FAILED"}
+                if phase in {"START", "STOPPING", "QUARANTINED"}
+                else {"UNKNOWN"}
+            )
+            reconciled = _wait_task(restarted, task_id, expected_state)
+            if expected_state == {"FAILED"}:
+                assert reconciled["stopReason"] == "RUNTIME_UNRESPONSIVE"
+            else:
+                assert reconciled["stopReason"] is None
+            event_status, event_page = _request(
+                restarted.base_url,
+                "GET",
+                f"/v1/tasks/{task_id}/events?afterSequence=-1&pageSize=100",
+            )
+            assert event_status == 200
+            expected_event = (
+                "TASK_FAILED"
+                if expected_state == {"FAILED"}
+                else "TASK_INTERRUPTED"
+            )
+            assert event_page["events"][-1]["eventType"] == expected_event  # type: ignore[index]
+            assert _stop_and_assert_exact_reap(restarted) == 0
+        finally:
+            _remove_container(restarted)
+    finally:
+        try:
+            _signal_container_pid(
+                container,
+                container.child_pid,
+                signal.SIGCONT,
+                check=False,
+            )
+        except (FileNotFoundError, StopIteration):
+            pass
+        _remove_container(container)

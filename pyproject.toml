@@ -35,6 +35,26 @@ dependencies = [
     # floating `>=` lets the CUDA index (which carries newer builds than the
     # PyPI pin) drag torch 2.9.1 -> 2.13.0, an unvetted bump for mjlab/rsl_rl.
     "torch==2.9.1",
+    "fastapi>=0.116,<1",
+    "uvicorn>=0.35,<1",
+    "pydantic>=2.11,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "httpx>=0.28,<1",
+    "ruff>=0.12,<1",
+    "jsonschema>=4,<5",
+]
+rom = [
+    "fastapi==0.141.1",
+    "mujoco==3.10.0",
+    "numpy==2.4.1",
+    "onnx==1.22.0",
+    "onnxruntime==1.24.4",
+    "pydantic==2.12.5",
+    "uvicorn==0.52.4",
 ]
 
 [project.entry-points."mjlab.tasks"]
@@ -44,6 +64,8 @@ mjlab_microduck = "mjlab_microduck.tasks"
 # Shadows mjlab's `train` entry point: identical behavior, plus a --hf-jobs
 # flag that submits the run to Hugging Face Jobs instead (see train_cli.py).
 train = "mjlab_microduck.train_cli:main"
+microduck-rom-sim = "mjlab_microduck.rom.main:main"
+microduck-rom-runtime-child = "mjlab_microduck.rom.runtime_child:main"
   
 [tool.ruff]
 src = ["src"]  # Helpful for recognizing first-party imports.
@@ -51,6 +73,11 @@ indent-width = 4
 exclude = [
   "src/mjlab/third_party",
   "typings",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated.*:starlette.exceptions.StarletteDeprecationWarning",
 ]
 
 [tool.uv]

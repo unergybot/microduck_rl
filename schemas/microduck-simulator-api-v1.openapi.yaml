@@ -1,0 +1,1327 @@
+openapi: 3.1.0
+info:
+  title: MicroDuck ROM Simulator API
+  version: 1.0.0
+paths:
+  /v1/health:
+    get:
+      summary: Health
+      operationId: health
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/ready:
+    get:
+      summary: Ready
+      operationId: ready
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /v1/catalog:
+    get:
+      summary: Catalog
+      operationId: catalog
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /v1/robot/status:
+    get:
+      summary: Robot Status
+      operationId: robotStatus
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RobotStatus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /v1/tasks:
+    post:
+      summary: Create Task
+      operationId: createTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateRequest'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSnapshot'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /v1/tasks/{taskId}:
+    get:
+      summary: Get Task
+      operationId: getTask
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSnapshot'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Not Found
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Service Unavailable
+  /v1/tasks/{taskId}/cancel:
+    post:
+      summary: Cancel Task
+      operationId: cancelTask
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSnapshot'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Request Entity Too Large
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Service Unavailable
+  /v1/tasks/{taskId}/command:
+    put:
+      summary: Command Task
+      operationId: commandTask
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCommandRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSnapshot'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Conflict
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Request Entity Too Large
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Service Unavailable
+  /v1/tasks/{taskId}/events:
+    get:
+      summary: Task Events
+      operationId: taskEvents
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+      - name: afterSequence
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -1
+          default: -1
+          title: Aftersequence
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 100
+          title: Pagesize
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskEventPage'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Not Found
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Service Unavailable
+components:
+  schemas:
+    ActionDefinition:
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: AVAILABLE
+          required:
+          - availability
+        then:
+          properties:
+            policyRef:
+              type: string
+              minLength: 1
+          required:
+          - policyRef
+      - if:
+          properties:
+            executionMode:
+              const: CONTINUOUS_LEASE
+          required:
+          - executionMode
+        then:
+          properties:
+            lease:
+              not:
+                type: 'null'
+          required:
+          - lease
+      properties:
+        actionCode:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actioncode
+        executionMode:
+          type: string
+          enum:
+          - DISCRETE
+          - CONTINUOUS_LEASE
+          title: Executionmode
+        availability:
+          type: string
+          enum:
+          - AVAILABLE
+          - UNAVAILABLE
+          title: Availability
+        policyRef:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Policyref
+        unavailableReason:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Unavailablereason
+        parameterSchema:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 128
+          title: Parameterschema
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 65536
+            maxDepth: 8
+        completion:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionContract'
+          - type: 'null'
+        lease:
+          anyOf:
+          - $ref: '#/components/schemas/LeaseContract'
+          - type: 'null'
+        displayName:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Displayname
+        description:
+          anyOf:
+          - type: string
+            maxLength: 1024
+            minLength: 1
+          - type: 'null'
+          title: Description
+        localizedLabels:
+          anyOf:
+          - additionalProperties:
+              type: string
+              maxLength: 1024
+              minLength: 1
+            propertyNames:
+              maxLength: 128
+              minLength: 1
+            type: object
+            maxProperties: 32
+          - type: 'null'
+          title: Localizedlabels
+        preconditions:
+          anyOf:
+          - additionalProperties:
+              $ref: '#/components/schemas/JsonValue'
+            propertyNames:
+              maxLength: 128
+              minLength: 1
+            type: object
+            maxProperties: 128
+            x-unergy-invariants:
+              finiteNumbers: true
+              maxCanonicalJsonBytes: 65536
+              maxDepth: 8
+          - type: 'null'
+          title: Preconditions
+        safety:
+          anyOf:
+          - additionalProperties:
+              $ref: '#/components/schemas/JsonValue'
+            propertyNames:
+              maxLength: 128
+              minLength: 1
+            type: object
+            maxProperties: 128
+            x-unergy-invariants:
+              finiteNumbers: true
+              maxCanonicalJsonBytes: 65536
+              maxDepth: 8
+          - type: 'null'
+          title: Safety
+        qualificationRefs:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 512
+              minLength: 1
+            type: array
+            maxItems: 32
+          - type: 'null'
+          title: Qualificationrefs
+      additionalProperties: false
+      type: object
+      required:
+      - actionCode
+      - executionMode
+      - availability
+      - parameterSchema
+      title: ActionDefinition
+    CatalogResponse:
+      properties:
+        bundleId:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Bundleid
+        bundleVersion:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Bundleversion
+        bundleDigest:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[0-9a-f]{64}$
+          - type: 'null'
+          title: Bundledigest
+        observationContract:
+          type: string
+          const: MICRODUCK_OBS_61_V1
+          title: Observationcontract
+          default: MICRODUCK_OBS_61_V1
+        actionContract:
+          type: string
+          const: MICRODUCK_ACTION_14_V1
+          title: Actioncontract
+          default: MICRODUCK_ACTION_14_V1
+        actions:
+          items:
+            $ref: '#/components/schemas/ActionDefinition'
+          type: array
+          maxItems: 256
+          title: Actions
+      additionalProperties: false
+      type: object
+      required:
+      - actions
+      title: CatalogResponse
+    CompletionContract:
+      properties:
+        terminalConditions:
+          items:
+            type: string
+            maxLength: 128
+            minLength: 1
+          type: array
+          maxItems: 16
+          minItems: 1
+          title: Terminalconditions
+        maxDurationMs:
+          type: integer
+          maximum: 3600000
+          exclusiveMinimum: 0
+          title: Maxdurationms
+      additionalProperties: false
+      type: object
+      required:
+      - terminalConditions
+      - maxDurationMs
+      title: CompletionContract
+    Error:
+      properties:
+        code:
+          type: string
+          enum:
+          - AUTH_REQUIRED
+          - NOT_READY
+          - BUNDLE_MISMATCH
+          - ACTION_UNAVAILABLE
+          - PARAMETER_INVALID
+          - PRECONDITION_FAILED
+          - ROBOT_BUSY
+          - TASK_ID_CONFLICT
+          - COMMAND_SEQUENCE_CONFLICT
+          - STALE_COMMAND
+          - TASK_NOT_FOUND
+          - REQUEST_BODY_TOO_LARGE
+          - INTERNAL_ERROR
+          title: Code
+        message:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Message
+        details:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Details
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 4
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      - message
+      - details
+      title: Error
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        alive:
+          type: boolean
+          const: true
+          title: Alive
+          default: true
+      additionalProperties: false
+      type: object
+      title: HealthResponse
+    JsonValue:
+      anyOf:
+      - type: string
+        maxLength: 1024
+      - type: integer
+        maximum: 9223372036854775807
+        minimum: -9223372036854775808
+      - type: number
+      - type: boolean
+      - items:
+          $ref: '#/components/schemas/JsonValue'
+        type: array
+        maxItems: 256
+      - additionalProperties:
+          $ref: '#/components/schemas/JsonValue'
+        propertyNames:
+          maxLength: 128
+          minLength: 1
+        type: object
+        maxProperties: 128
+      - type: 'null'
+    LeaseContract:
+      properties:
+        minLeaseMs:
+          type: integer
+          maximum: 60000
+          exclusiveMinimum: 0
+          title: Minleasems
+        defaultLeaseMs:
+          type: integer
+          maximum: 60000
+          exclusiveMinimum: 0
+          title: Defaultleasems
+        maxLeaseMs:
+          type: integer
+          maximum: 60000
+          exclusiveMinimum: 0
+          title: Maxleasems
+        commandCadenceMs:
+          type: integer
+          maximum: 60000
+          exclusiveMinimum: 0
+          title: Commandcadencems
+        zeroCommand:
+          additionalProperties:
+            anyOf:
+            - type: string
+              maxLength: 1024
+            - type: integer
+              maximum: 9223372036854775807
+              minimum: -9223372036854775808
+            - type: number
+            - type: boolean
+            - type: 'null'
+          propertyNames:
+            not:
+              pattern: '[jJ][oO][iI][nN][tT]|[tT][oO][rR][qQ][uU][eE]|[pP][wW][mM]|[pP][oO][lL][iI][cC][yY][pP][aA][tT][hH]|[pP][oO][lL][iI][cC][yY][nN][aA][mM][eE]'
+            maxLength: 64
+            minLength: 1
+          type: object
+          maxProperties: 16
+          title: Zerocommand
+          x-unergy-invariants:
+            finiteScalarsOnly: true
+            maxCanonicalJsonBytes: 16384
+            maxDepth: 1
+            rejectPropertyNameSubstringsCaseInsensitive:
+            - joint
+            - torque
+            - pwm
+            - policyPath
+            - policyName
+        safeStopBehavior:
+          type: string
+          const: ZERO_TWIST
+          title: Safestopbehavior
+      additionalProperties: false
+      type: object
+      required:
+      - minLeaseMs
+      - defaultLeaseMs
+      - maxLeaseMs
+      - commandCadenceMs
+      - zeroCommand
+      - safeStopBehavior
+      title: LeaseContract
+      x-unergy-invariants:
+      - minLeaseMs <= defaultLeaseMs <= maxLeaseMs
+      - commandCadenceMs <= minLeaseMs
+    ReadyResponse:
+      properties:
+        ready:
+          type: boolean
+          title: Ready
+        robotModel:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Robotmodel
+        bundleId:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Bundleid
+        bundleVersion:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Bundleversion
+        bundleDigest:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[0-9a-f]{64}$
+          - type: 'null'
+          title: Bundledigest
+        reasonCodes:
+          items:
+            type: string
+            maxLength: 128
+            minLength: 1
+          type: array
+          maxItems: 32
+          title: Reasoncodes
+      additionalProperties: false
+      type: object
+      required:
+      - ready
+      - reasonCodes
+      title: ReadyResponse
+    RobotStatus:
+      properties:
+        schema:
+          type: string
+          const: BIPED_POSE_V1
+          title: Schema
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        basePositionM:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 3
+          minItems: 3
+          title: Basepositionm
+        baseOrientationXyzw:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Baseorientationxyzw
+        baseLinearVelocityMps:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 3
+          minItems: 3
+          title: Baselinearvelocitymps
+          description: World-frame trunk-base linear velocity.
+        baseAngularVelocityRadps:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 3
+          minItems: 3
+          title: Baseangularvelocityradps
+          description: Trunk-body-frame angular velocity, matching the training IMU
+            gyro.
+        jointPositionsRad:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 14
+          minItems: 14
+          title: Jointpositionsrad
+        jointVelocitiesRadps:
+          prefixItems:
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          - type: number
+          type: array
+          maxItems: 14
+          minItems: 14
+          title: Jointvelocitiesradps
+        policyTarget:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Policytarget
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 4
+        requestedMotion:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Requestedmotion
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 4
+        appliedMotion:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Appliedmotion
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 4
+        limitingReason:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Limitingreason
+        activePolicyRef:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Activepolicyref
+        activeActionCode:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Activeactioncode
+        activeTaskId:
+          anyOf:
+          - type: string
+            pattern: ^[0-9a-f]{32}$
+          - type: 'null'
+          title: Activetaskid
+        simulationTimeS:
+          type: number
+          minimum: 0.0
+          title: Simulationtimes
+        loopFrequencyHz:
+          type: number
+          minimum: 0.0
+          title: Loopfrequencyhz
+        fallen:
+          type: boolean
+          title: Fallen
+        limp:
+          type: boolean
+          title: Limp
+        health:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          propertyNames:
+            maxLength: 128
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Health
+          x-unergy-invariants:
+            finiteNumbers: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 4
+      additionalProperties: false
+      type: object
+      required:
+      - schema
+      - timestamp
+      - basePositionM
+      - baseOrientationXyzw
+      - baseLinearVelocityMps
+      - baseAngularVelocityRadps
+      - jointPositionsRad
+      - jointVelocitiesRadps
+      - policyTarget
+      - requestedMotion
+      - appliedMotion
+      - simulationTimeS
+      - loopFrequencyHz
+      - fallen
+      - limp
+      - health
+      title: RobotStatus
+    Scenario:
+      properties:
+        terrain:
+          type: string
+          enum:
+          - flat
+          - ramp
+          title: Terrain
+        seed:
+          type: integer
+          maximum: 4294967295
+          minimum: 0
+          title: Seed
+      additionalProperties: false
+      type: object
+      required:
+      - terrain
+      - seed
+      title: Scenario
+      description: Exact seeded reset scenario supported by the governed V1 runtime.
+    TaskCommandRequest:
+      properties:
+        commandSequence:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          title: Commandsequence
+        parameters:
+          additionalProperties:
+            anyOf:
+            - type: string
+              maxLength: 1024
+            - type: integer
+              maximum: 9223372036854775807
+              minimum: -9223372036854775808
+            - type: number
+            - type: boolean
+            - type: 'null'
+          propertyNames:
+            not:
+              pattern: '[jJ][oO][iI][nN][tT]|[tT][oO][rR][qQ][uU][eE]|[pP][wW][mM]|[pP][oO][lL][iI][cC][yY][pP][aA][tT][hH]|[pP][oO][lL][iI][cC][yY][nN][aA][mM][eE]'
+            maxLength: 64
+            minLength: 1
+          type: object
+          maxProperties: 16
+          title: Parameters
+          x-unergy-invariants:
+            finiteScalarsOnly: true
+            maxCanonicalJsonBytes: 16384
+            maxDepth: 1
+            rejectPropertyNameSubstringsCaseInsensitive:
+            - joint
+            - torque
+            - pwm
+            - policyPath
+            - policyName
+        leaseMs:
+          type: integer
+          maximum: 60000
+          exclusiveMinimum: 0
+          title: Leasems
+      additionalProperties: false
+      type: object
+      required:
+      - commandSequence
+      - parameters
+      - leaseMs
+      title: TaskCommandRequest
+    TaskCreateRequest:
+      properties:
+        schema:
+          type: string
+          const: MICRODUCK_SIM_TASK_V1
+          title: Schema
+        taskId:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+        actionCode:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actioncode
+        bundleVersion:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Bundleversion
+        bundleDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Bundledigest
+        parameters:
+          additionalProperties:
+            anyOf:
+            - type: string
+              maxLength: 1024
+            - type: integer
+              maximum: 9223372036854775807
+              minimum: -9223372036854775808
+            - type: number
+            - type: boolean
+            - type: 'null'
+          propertyNames:
+            not:
+              pattern: '[jJ][oO][iI][nN][tT]|[tT][oO][rR][qQ][uU][eE]|[pP][wW][mM]|[pP][oO][lL][iI][cC][yY][pP][aA][tT][hH]|[pP][oO][lL][iI][cC][yY][nN][aA][mM][eE]'
+            maxLength: 64
+            minLength: 1
+          type: object
+          maxProperties: 16
+          title: Parameters
+          x-unergy-invariants:
+            finiteScalarsOnly: true
+            maxCanonicalJsonBytes: 16384
+            maxDepth: 1
+            rejectPropertyNameSubstringsCaseInsensitive:
+            - joint
+            - torque
+            - pwm
+            - policyPath
+            - policyName
+        scenario:
+          $ref: '#/components/schemas/Scenario'
+        leaseMs:
+          anyOf:
+          - type: integer
+            maximum: 60000
+            exclusiveMinimum: 0
+          - type: 'null'
+          title: Leasems
+        requestedBy:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Requestedby
+      additionalProperties: false
+      type: object
+      required:
+      - schema
+      - taskId
+      - actionCode
+      - bundleVersion
+      - bundleDigest
+      - parameters
+      - scenario
+      - requestedBy
+      title: TaskCreateRequest
+    TaskEvent:
+      properties:
+        sequence:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          title: Sequence
+        eventType:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Eventtype
+        payload:
+          additionalProperties:
+            anyOf:
+            - type: string
+              maxLength: 1024
+            - type: integer
+              maximum: 9223372036854775807
+              minimum: -9223372036854775808
+            - type: number
+            - type: boolean
+            - type: 'null'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+          type: object
+          maxProperties: 16
+          title: Payload
+          x-unergy-invariants:
+            finiteScalarsOnly: true
+            maxCanonicalJsonBytes: 4096
+            maxDepth: 1
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      additionalProperties: false
+      type: object
+      required:
+      - sequence
+      - eventType
+      - createdAt
+      title: TaskEvent
+    TaskEventPage:
+      properties:
+        events:
+          items:
+            $ref: '#/components/schemas/TaskEvent'
+          type: array
+          maxItems: 100
+          title: Events
+      additionalProperties: false
+      type: object
+      required:
+      - events
+      title: TaskEventPage
+    TaskEvidence:
+      properties:
+        bundleDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Bundledigest
+        policyDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Policydigest
+        modelDigest:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[0-9a-f]{64}$
+          - type: 'null'
+          title: Modeldigest
+        metrics:
+          additionalProperties:
+            anyOf:
+            - type: string
+              maxLength: 1024
+            - type: integer
+              maximum: 9223372036854775807
+              minimum: -9223372036854775808
+            - type: number
+            - type: boolean
+            - type: 'null'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+          type: object
+          maxProperties: 32
+          title: Metrics
+          x-unergy-invariants:
+            finiteScalarsOnly: true
+            maxCanonicalJsonBytes: 1024
+            maxDepth: 1
+        stopReason:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Stopreason
+      additionalProperties: false
+      type: object
+      required:
+      - bundleDigest
+      - policyDigest
+      title: TaskEvidence
+    TaskSnapshot:
+      properties:
+        taskId:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          title: Taskid
+        state:
+          type: string
+          enum:
+          - ACCEPTED
+          - VALIDATING
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+          - CANCELLED
+          - TIMED_OUT
+          - UNKNOWN
+          title: State
+        actionCode:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actioncode
+        bundleVersion:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Bundleversion
+        bundleDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Bundledigest
+        requestedAt:
+          type: string
+          format: date-time
+          title: Requestedat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/TaskEvidence'
+          - type: 'null'
+        stopReason:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Stopreason
+      additionalProperties: false
+      type: object
+      required:
+      - taskId
+      - state
+      - actionCode
+      - bundleVersion
+      - bundleDigest
+      - requestedAt
+      - updatedAt
+      title: TaskSnapshot
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token
