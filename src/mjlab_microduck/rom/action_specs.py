@@ -45,7 +45,10 @@ class SquatReturnLimits:
 
 
 SQUAT_RETURN_LIMITS = SquatReturnLimits(
-    crouch_height_max_m=0.115,
+    # Standing is 0.1200 on the deployment model and the reference crouch
+    # bottoms at 0.1127; 0.117 rejects a do-nothing policy by ~3 mm while
+    # leaving ~1 mm of convergence margin for a qualified squat policy.
+    crouch_height_max_m=0.117,
     return_pose_error_max_rad=0.12,
 )
 
