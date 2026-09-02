@@ -517,6 +517,9 @@ def _expected_qualification_motion(
         }
     if spec.command_profile in {"SIT_FLAG_ZERO", "ZERO_TWIST_LEASE"}:
         return zero
+    if spec.command_profile == "COS_SIN_SQUAT_REFERENCE_PHASE":
+        # The governed squat episode always starts the reference cycle at phase 0.
+        return zero | {"twist": [1.0, 0.0, 0.0]}
     raise ValueError(f"action {action_code} has no governed qualification motion")
 
 
