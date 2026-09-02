@@ -11,7 +11,11 @@ def test_reference_task_keeps_contract_and_replaces_ground_pick_objectives():
     assert cfg.actions["joint_pos"].scale == 1.0
     assert cfg.commands["twist"].randomize_phase is True
     assert cfg.rewards["reference_joint"].func is mdp.squat_reference_joint_track
+    assert cfg.rewards["reference_joint"].params["std"] == 0.2
     assert cfg.rewards["reference_height"].func is mdp.squat_reference_height_track
+    # The reference crouch amplitude is ~9 mm, so the height kernel must stay
+    # far tighter than the 0.04 std that made standing still near-optimal.
+    assert cfg.rewards["reference_height"].params["std"] == 0.008
     assert cfg.rewards["reference_completion"].func is mdp.squat_reference_completion
     assert "mouth_ground_proximity" not in cfg.rewards
     assert "sample_mouth_payload" not in cfg.events
