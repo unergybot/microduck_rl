@@ -17,7 +17,7 @@ import onnx
 import onnxruntime as ort
 
 from .action_catalog import ACTION_TEMPLATES, code_owned_action_definition
-from .action_specs import ACTION_RUNTIME_SPECS
+from .action_specs import ACTION_RUNTIME_SPECS, RuntimeActionSpec
 from .contracts import (
     ACTION_CONTRACT,
     OBSERVATION_CONTRACT,
@@ -302,6 +302,13 @@ def _policy_archive_path(task_id: str, digest: str) -> str:
     return f"policies/{safe_task_id}-{digest.removeprefix('sha256:')}.onnx"
 
 
+def _missing_policy_reason(spec: RuntimeActionSpec) -> str:
+    """Reference actions report their unqualified policy, not a missing artifact."""
+    if spec.unavailable_reason == "REFERENCE_POLICY_UNQUALIFIED":
+        return spec.unavailable_reason
+    return "POLICY_ARTIFACT_MISSING"
+
+
 def build_bundle(request: BundleBuildRequest) -> BuiltBundle:
     """Build a policy bundle once; existing release archives are never overwritten."""
     output_zip = request.output_zip.resolve()
@@ -474,7 +481,7 @@ def build_bundle(request: BundleBuildRequest) -> BuiltBundle:
             and policy_inference_valid.get(template.action_code, False)
         )
         unavailable_reason = (
-            "POLICY_ARTIFACT_MISSING"
+            _missing_policy_reason(runtime_spec)
             if policy_ref is None
             else (
                 runtime_spec.unavailable_reason

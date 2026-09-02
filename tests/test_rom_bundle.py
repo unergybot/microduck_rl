@@ -398,6 +398,24 @@ def test_squat_reference_is_visible_but_unavailable_until_policy_is_qualified(
     assert squat.unavailableReason == "REFERENCE_POLICY_UNQUALIFIED"
 
 
+def test_squat_reference_reports_unqualified_policy_without_artifact(tmp_path: Path):
+    """A missing reference artifact keeps the release blocker, not a generic error."""
+    policy = write_minimal_onnx(tmp_path / WALK_ONNX)
+    bundle = build_bundle(
+        minimal_request(tmp_path, artifacts={"WALK_VELOCITY": policy})
+    ).manifest
+
+    squat = next(
+        action for action in bundle.actions if action.actionCode == "SQUAT_REFERENCE"
+    )
+    assert squat.availability == "UNAVAILABLE"
+    assert squat.unavailableReason == "REFERENCE_POLICY_UNQUALIFIED"
+    assert squat.policyRef is None
+
+    spin = next(action for action in bundle.actions if action.actionCode == "SPIN")
+    assert spin.unavailableReason == "POLICY_ARTIFACT_MISSING"
+
+
 def test_roller_policy_is_unavailable_without_roller_model_capability(tmp_path: Path):
     policy = write_minimal_onnx(tmp_path / "roller.onnx")
     bundle = build_bundle(
