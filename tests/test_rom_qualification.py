@@ -35,6 +35,7 @@ from mjlab_microduck.rom.qualification import (
     QualificationThresholds,
     ReleaseConfiguration,
     ReleaseConfigurationError,
+    _expected_qualification_motion,
     qualify_and_promote,
     recompute_action_qualification,
 )
@@ -1898,6 +1899,14 @@ def test_runtime_loader_rejects_resigned_forged_stand_completion(
 
     with pytest.raises(ValueError, match="qualification"):
         load_qualified_bundle(installed)
+
+
+def test_squat_reference_expected_motion_starts_at_phase_zero() -> None:
+    """The governed squat battery always starts the reference cycle at phase zero."""
+    motion = _expected_qualification_motion("SQUAT_REFERENCE", {})
+    assert motion["twist"] == [1.0, 0.0, 0.0]
+    assert motion["headPose"] == [0.0, 0.0, 0.0, 0.0]
+    assert motion["bodyPose"] == [0.0] * 6
 
 
 def test_stand_rejects_ten_claimed_settled_steps_with_high_pose_errors(
