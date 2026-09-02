@@ -31,6 +31,10 @@ from .microduck_ground_pick_env_cfg import (
     make_microduck_ground_pick_env_cfg,
     MicroduckGroundPickRlCfg,
 )
+from .microduck_squat_reference_env_cfg import (
+    make_microduck_squat_reference_env_cfg,
+    MicroduckSquatReferenceRlCfg,
+)
 from .microduck_ball_kick_env_cfg import (
     make_microduck_ball_kick_env_cfg,
     MicroduckBallKickRlCfg,
@@ -143,6 +147,14 @@ register_mjlab_task(
     env_cfg=make_microduck_ground_pick_env_cfg(),
     play_env_cfg=make_microduck_ground_pick_env_cfg(play=True),
     rl_cfg=MicroduckGroundPickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-SquatReference-Flat-MicroDuck",
+    env_cfg=make_microduck_squat_reference_env_cfg(),
+    play_env_cfg=make_microduck_squat_reference_env_cfg(play=True),
+    rl_cfg=MicroduckSquatReferenceRlCfg,
     runner_cls=MicroduckOnPolicyRunner,
 )
 

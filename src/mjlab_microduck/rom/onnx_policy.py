@@ -115,7 +115,9 @@ def _float32_vector(
     values = tensor.value
     if values.dtype != np.float32:
         raise ValueError("ONNX normalization statistics must be tensor(float)")
-    if values.shape != (61,) or values.dtype != np.float32:
+    if values.shape == (1, 61):
+        values = values.reshape(61)
+    if values.shape != (61,):
         raise ValueError("ONNX normalization statistics must have float32 shape [61]")
     if not np.isfinite(values).all() or (positive and not np.all(values > 0.0)):
         raise ValueError("ONNX normalization statistics are not finite and safe")

@@ -20,6 +20,8 @@ from mjlab.managers.event_manager import requires_model_fields
 from mjlab.utils.lab_api.math import matrix_from_quat, wrap_to_pi, quat_apply, quat_from_angle_axis
 from rsl_rl.algorithms.ppo import PPO as _PPO
 
+from mjlab_microduck.reference_motion import load_reference_motion
+
 # ---------------------------------------------------------------------------
 # Patch 1: RewardManager.compute — sanitize NaN rewards before they enter the
 # PPO buffer.  mjlab computes rewards BEFORE resetting environments, so any
@@ -5027,6 +5029,170 @@ class GroundPickPhaseCommandCfg(UniformVelocityCommandCfg):
 
     def build(self, env: ManagerBasedRlEnv) -> "GroundPickPhaseCommand":
         return GroundPickPhaseCommand(self, env)
+
+
+def squat_phase_from_command(command: torch.Tensor) -> torch.Tensor:
+    """Recover normalized phase from ``[cos(2*pi*p), sin(2*pi*p), ...]``."""
+    angle = torch.atan2(command[:, 1], command[:, 0])
+    return torch.remainder(angle, 2.0 * torch.pi) / (2.0 * torch.pi)
+
+
+def squat_reference_indices(phase: torch.Tensor, frames: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return adjacent reference frame indices and interpolation alpha."""
+    if frames < 2:
+        raise ValueError("reference motion needs at least two frames")
+    scaled = torch.clamp(phase, 0.0, 1.0) * float(frames - 1)
+    lower = torch.floor(scaled).to(dtype=torch.long)
+    upper = torch.clamp(lower + 1, max=frames - 1)
+    alpha = scaled - lower.to(dtype=scaled.dtype)
+    alpha = torch.where(lower >= frames - 1, torch.zeros_like(alpha), alpha)
+    return lower, upper, alpha
+
+
+def squat_completion_latch_update(
+    latched: torch.Tensor,
+    phase: torch.Tensor,
+    pose_error: torch.Tensor,
+    completion_phase: float = 0.85,
+    error_threshold: float = 0.12,
+    rearm_phase: float = 0.10,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One-shot completion reward near the end of each reference cycle."""
+    latched = torch.where(phase < rearm_phase, torch.zeros_like(latched, dtype=torch.bool), latched.bool())
+    eligible = (phase >= completion_phase) & (pose_error <= error_threshold) & (~latched)
+    reward = eligible.to(dtype=pose_error.dtype)
+    latched = latched | eligible
+    return latched, reward
+
+
+def _squat_reference_cache(env: ManagerBasedRlEnv, reference_path: str | None = None) -> dict[str, torch.Tensor]:
+    path_key = reference_path or "__env__"
+    cache = env.__dict__.setdefault("_squat_reference_cache", {})
+    key = (path_key, env.device)
+    tensors = cache.get(key)
+    if tensors is None:
+        reference = load_reference_motion(reference_path)
+        tensors = {
+            "joint_pos": torch.as_tensor(reference.joint_pos, dtype=torch.float32, device=env.device),
+            "root_height": torch.as_tensor(reference.root_height, dtype=torch.float32, device=env.device),
+        }
+        cache[key] = tensors
+    return tensors
+
+
+def _squat_reference_target(
+    env: ManagerBasedRlEnv,
+    command_name: str = "twist",
+    reference_path: str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    reference = _squat_reference_cache(env, reference_path)
+    phase = squat_phase_from_command(env.command_manager.get_command(command_name))
+    lower, upper, alpha = squat_reference_indices(phase, reference["joint_pos"].shape[0])
+    alpha_j = alpha.unsqueeze(-1)
+    joint_pos = reference["joint_pos"][lower] * (1.0 - alpha_j) + reference["joint_pos"][upper] * alpha_j
+    root_height = reference["root_height"][lower] * (1.0 - alpha) + reference["root_height"][upper] * alpha
+    return phase, joint_pos, root_height
+
+
+def squat_reference_joint_track(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    command_name: str = "twist",
+    reference_path: str | None = None,
+    std: float = 0.35,
+) -> torch.Tensor:
+    """Track the Blender-authored 14-servo joint reference by phase."""
+    asset: Entity = env.scene[asset_cfg.name]
+    _, target, _ = _squat_reference_target(env, command_name=command_name, reference_path=reference_path)
+    error = torch.mean((_servo_joint_pos(env, asset) - target) ** 2, dim=1)
+    return torch.exp(-error / max(std * std, 1e-6))
+
+
+def squat_reference_height_track(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    command_name: str = "twist",
+    reference_path: str | None = None,
+    std: float = 0.04,
+) -> torch.Tensor:
+    """Track the reference root height while leaving horizontal root motion free."""
+    asset: Entity = env.scene[asset_cfg.name]
+    _, _, target_height = _squat_reference_target(env, command_name=command_name, reference_path=reference_path)
+    height = asset.data.root_link_pos_w[:, 2]
+    return torch.exp(-((height - target_height) ** 2) / max(std * std, 1e-6))
+
+
+def squat_reference_completion(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    command_name: str = "twist",
+    reference_path: str | None = None,
+    completion_phase: float = 0.85,
+    error_threshold: float = 0.12,
+) -> torch.Tensor:
+    """Pay once after a full down-up cycle reaches the final reference pose."""
+    asset: Entity = env.scene[asset_cfg.name]
+    phase, target, _ = _squat_reference_target(env, command_name=command_name, reference_path=reference_path)
+    pose_error = torch.mean(torch.abs(_servo_joint_pos(env, asset) - target), dim=1)
+    if not hasattr(env, "_squat_completion_latch"):
+        env._squat_completion_latch = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    latch, reward = squat_completion_latch_update(
+        env._squat_completion_latch,
+        phase,
+        pose_error,
+        completion_phase=completion_phase,
+        error_threshold=error_threshold,
+    )
+    env._squat_completion_latch = latch
+    return reward
+
+
+def reset_squat_latch(env: ManagerBasedRlEnv, env_ids: torch.Tensor) -> None:
+    if env_ids is None or len(env_ids) == 0:
+        return
+    if not hasattr(env, "_squat_completion_latch"):
+        env._squat_completion_latch = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    env._squat_completion_latch[env_ids.to(env.device, dtype=torch.long)] = False
+
+
+def reset_squat_reference_state(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    command_name: str = "twist",
+    reference_path: str | None = None,
+    probability: float = 0.25,
+) -> None:
+    """Occasionally initialize from the reference pose for imitation curriculum."""
+    if env_ids is None or len(env_ids) == 0 or probability <= 0.0:
+        return
+    env_ids = env_ids.to(env.device, dtype=torch.long)
+    mask = torch.rand(len(env_ids), device=env.device) < probability
+    chosen = env_ids[mask]
+    if len(chosen) == 0:
+        return
+
+    reference = _squat_reference_cache(env, reference_path)
+    phase = torch.rand(len(chosen), device=env.device)
+    lower, upper, alpha = squat_reference_indices(phase, reference["joint_pos"].shape[0])
+    target = reference["joint_pos"][lower] * (1.0 - alpha.unsqueeze(-1)) + reference["joint_pos"][upper] * alpha.unsqueeze(-1)
+    height = reference["root_height"][lower] * (1.0 - alpha) + reference["root_height"][upper] * alpha
+
+    asset: Entity = env.scene[asset_cfg.name]
+    joint_pos = asset.data.joint_pos[chosen].clone()
+    joint_vel = torch.zeros_like(asset.data.joint_vel[chosen])
+    servo_ids = _servo_joint_ids(env, asset)
+    joint_pos[:, servo_ids] = target
+    asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=chosen)
+    env.sim.data.qpos[chosen, 2] = height
+    env.sim.data.qvel[chosen, :6] = 0.0
+
+    command = env.command_manager.get_term(command_name)
+    if hasattr(command, "_gp_phase"):
+        command._gp_phase[chosen] = phase
+        command.vel_command_b[chosen, 0] = torch.cos(2 * torch.pi * phase)
+        command.vel_command_b[chosen, 1] = torch.sin(2 * torch.pi * phase)
+        command.vel_command_b[chosen, 2] = 0.0
 
 
 # --------------------------------------------------------------------------- #

@@ -25,6 +25,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--lin-vel-x", type=float, default=0.30, help="forward command in m/s")
     parser.add_argument("--lin-vel-y", type=float, default=0.0, help="lateral command in m/s")
     parser.add_argument("--ang-vel-z", type=float, default=0.0, help="yaw command in rad/s")
+    parser.add_argument(
+        "--phase-period",
+        type=float,
+        default=None,
+        help="drive command slots as [cos(2*pi*phase), sin(2*pi*phase), 0] with this period",
+    )
     parser.add_argument("--seed", type=int, default=0, help="deterministic rollout seed")
     return parser.parse_args()
 
@@ -39,6 +45,7 @@ def main() -> int:
                 duration_s=args.duration,
                 command=(args.lin_vel_x, args.lin_vel_y, args.ang_vel_z),
                 seed=args.seed,
+                phase_period_s=args.phase_period,
             )
         )
         validation = validate_motion(output_path)
@@ -53,7 +60,10 @@ def main() -> int:
 
     print(f"Output: {output_path}")
     print(f"Frames: {frames}")
-    print(f"Command: ({args.lin_vel_x}, {args.lin_vel_y}, {args.ang_vel_z})")
+    if args.phase_period is None:
+        print(f"Command: ({args.lin_vel_x}, {args.lin_vel_y}, {args.ang_vel_z})")
+    else:
+        print(f"Phase period: {args.phase_period}")
     print(f"Policy SHA-256: {policy_hash}")
     print(
         "Validator errors: "
