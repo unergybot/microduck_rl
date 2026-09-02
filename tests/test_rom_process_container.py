@@ -1641,7 +1641,7 @@ def test_real_read_only_container_api_and_child_replacement_matrix(
         status, catalog = _request(container.base_url, "GET", "/v1/catalog")
         assert status == 200
         actions = {item["actionCode"]: item for item in catalog["actions"]}  # type: ignore[index]
-        assert len(actions) == 15
+        assert len(actions) == 16
         assert actions["STAND"]["availability"] == "AVAILABLE"
         assert actions["WALK_VELOCITY"]["availability"] == "AVAILABLE"
         assert actions["SPIN"]["availability"] == "UNAVAILABLE"

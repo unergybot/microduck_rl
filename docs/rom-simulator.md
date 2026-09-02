@@ -63,7 +63,7 @@ catalog. Every candidate action currently marked `AVAILABLE` must appear in the
 release configuration. A mandatory action must already have verified policy,
 model, scenario, and runtime support. Optional actions without that support stay
 `UNAVAILABLE` with their original reason; they are not falsely qualified.
-The builder and promoted bundle always retain the complete ordered 15-action V1
+The builder and promoted bundle always retain the complete ordered 16-action V1
 catalog. Actions already marked `UNAVAILABLE` may be omitted from `release.json`;
 qualification carries each one deterministically as `UNAVAILABLE` using its
 code-owned reason. Any action a release intends to qualify, and every action the
