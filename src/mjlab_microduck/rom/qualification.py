@@ -837,12 +837,13 @@ def recompute_action_qualification(
             rollout,
             installed_runtime_revision,
         )
-        tracking_values.append(derived_tracking_mean)
+        if derived_tracking_mean is not None:
+            tracking_values.append(derived_tracking_mean)
         action_values.append(derived_action_metric)
 
     success_rate = _mean([1.0 if item.success else 0.0 for item in rollouts])
     fall_rate = _mean([1.0 if item.fallen else 0.0 for item in rollouts])
-    mean_tracking = _mean(tracking_values)
+    mean_tracking = _mean(tracking_values) if tracking_values else None
     action_mean = _mean(action_values)
     mean_distance = _mean([item.distanceM for item in rollouts])
     mean_energy = _mean([item.energyProxy for item in rollouts])
