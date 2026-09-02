@@ -51,6 +51,7 @@ def make_policy(tmp_path):
         output_width: int = 14,
         joint_names: tuple[str, ...] = EXPECTED_JOINT_NAMES,
         state_sensitive: bool = False,
+        output: np.ndarray | None = None,
     ) -> Path:
         kind = "state-sensitive" if state_sensitive else "constant"
         policy_path = tmp_path / f"{kind}-policy-{next(policy_count)}.onnx"
@@ -98,7 +99,11 @@ def make_policy(tmp_path):
                 "constant_actions",
                 TensorProto.FLOAT,
                 [1, output_width],
-                [0.0] * output_width,
+                (
+                    [0.0] * output_width
+                    if output is None
+                    else np.asarray(output, dtype=np.float32).reshape(-1).tolist()
+                ),
             )
             graph = helper.make_graph(
                 [helper.make_node("Constant", [], ["actions"], value=output_value)],
@@ -285,6 +290,24 @@ def test_exports_valid_three_frame_rollout(tmp_path, policy_path):
     assert validate_motion(result).frames == 3
 
 
+def test_rollout_export_clamps_recorded_joints_to_canonical_limits(tmp_path, make_policy):
+    policy = make_policy(output=np.full(14, 10.0, dtype=np.float32))
+
+    result = export_policy_rollout(
+        PolicyRolloutConfig(policy, tmp_path / "limited.npz", duration_s=0.08)
+    )
+
+    model = mujoco.MjModel.from_xml_path(str(rollout_module.MICRODUCK_SCENE_XML))
+    joint_limited = model.jnt_limited[1:].astype(bool)
+    lower = model.jnt_range[1:, 0][joint_limited]
+    upper = model.jnt_range[1:, 1][joint_limited]
+    with np.load(result, allow_pickle=False) as archive:
+        limited_positions = archive["joint_pos"][:, joint_limited]
+
+    assert np.all(limited_positions >= lower - 1e-6)
+    assert np.all(limited_positions <= upper + 1e-6)
+
+
 def test_hashes_canonical_rollout_configuration(tmp_path, policy_path):
     config = PolicyRolloutConfig(
         policy_path,
@@ -297,6 +320,41 @@ def test_hashes_canonical_rollout_configuration(tmp_path, policy_path):
     canonical_json = (
         '{"command":[0.3,-0.05,0.2],"control_decimation":4,'
         '"control_hz":50,"duration_s":0.02,"seed":7,"timestep_s":0.005}'
+    )
+    expected = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+    with np.load(result, allow_pickle=False) as archive:
+        source_hashes = json.loads(str(archive["source_hashes_json"][0]))
+
+    assert source_hashes["rollout_config_sha256"] == expected
+
+
+def test_phase_command_for_rollout_frame_uses_cyclic_ground_pick_encoding():
+    base = np.asarray([0.30, -0.05, 0.20], dtype=np.float32)
+
+    commands = [
+        rollout_module._command_for_frame(base, frame=frame, phase_period_s=2.0)
+        for frame in (0, 25, 50)
+    ]
+
+    np.testing.assert_allclose(commands[0], [1.0, 0.0, 0.0], atol=1e-7)
+    np.testing.assert_allclose(commands[1], [0.0, 1.0, 0.0], atol=1e-7)
+    np.testing.assert_allclose(commands[2], [-1.0, 0.0, 0.0], atol=1e-7)
+
+
+def test_hashes_phase_rollout_configuration(tmp_path, policy_path):
+    config = PolicyRolloutConfig(
+        policy_path,
+        tmp_path / "rollout.npz",
+        duration_s=0.02,
+        seed=7,
+        phase_period_s=4.0,
+    )
+    result = export_policy_rollout(config)
+    canonical_json = (
+        '{"command":[0.3,0.0,0.0],"control_decimation":4,'
+        '"control_hz":50,"duration_s":0.02,"phase_period_s":4.0,'
+        '"seed":7,"timestep_s":0.005}'
     )
     expected = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 

@@ -19,6 +19,7 @@ MICRODUCK_SCENE_XML = Path(__file__).parent / "robot/microduck/scene.xml"
 SIMULATION_TIMESTEP_S = 0.005
 CONTROL_DECIMATION = 4
 CONTROL_HZ = 50
+JOINT_LIMIT_MARGIN_RAD = 1e-6
 DEFAULT_POSE = np.asarray(
     [
         0.0,
@@ -51,6 +52,7 @@ class PolicyRolloutConfig:
     duration_s: float = 4.0
     command: tuple[float, float, float] = (0.30, 0.0, 0.0)
     seed: int = 0
+    phase_period_s: float | None = None
 
 
 def _joint_names(model: mujoco.MjModel) -> tuple[str, ...]:
@@ -144,6 +146,13 @@ def _validate_config(
         ) from exc
     if command.shape != (3,) or not np.isfinite(command).all():
         raise PolicyRolloutError("command must contain exactly three finite values")
+    if config.phase_period_s is not None:
+        try:
+            phase_period_s = float(config.phase_period_s)
+        except (TypeError, ValueError) as exc:
+            raise PolicyRolloutError("phase_period_s must be a positive finite number") from exc
+        if not math.isfinite(phase_period_s) or phase_period_s <= 0.0:
+            raise PolicyRolloutError("phase_period_s must be a positive finite number")
     if not isinstance(config.seed, (int, np.integer)):
         raise PolicyRolloutError("seed must be an integer")
     try:
@@ -225,7 +234,7 @@ def _observation(
 
 
 def _rollout_config_sha256(
-    *, duration_s: float, command: np.ndarray, seed: int
+    *, duration_s: float, command: np.ndarray, seed: int, phase_period_s: float | None
 ) -> str:
     payload = {
         "command": [float(value) for value in command],
@@ -235,6 +244,8 @@ def _rollout_config_sha256(
         "seed": int(seed),
         "timestep_s": SIMULATION_TIMESTEP_S,
     }
+    if phase_period_s is not None:
+        payload["phase_period_s"] = float(phase_period_s)
     canonical_json = json.dumps(
         payload,
         allow_nan=False,
@@ -242,6 +253,21 @@ def _rollout_config_sha256(
         sort_keys=True,
     )
     return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
+def _command_for_frame(
+    base_command: np.ndarray,
+    *,
+    frame: int,
+    phase_period_s: float | None,
+) -> np.ndarray:
+    if phase_period_s is None:
+        return base_command
+    phase = (frame / CONTROL_HZ / float(phase_period_s)) % 1.0
+    return np.asarray(
+        [math.cos(2.0 * math.pi * phase), math.sin(2.0 * math.pi * phase), 0.0],
+        dtype=np.float32,
+    )
 
 
 def _body_world_velocities(
@@ -303,6 +329,11 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
     body_names = _body_names(model)
     joint_qpos_addresses = model.jnt_qposadr[1:]
     joint_qvel_addresses = model.jnt_dofadr[1:]
+    joint_limited = model.jnt_limited[1:].astype(bool)
+    joint_low = model.jnt_range[1:, 0]
+    joint_high = model.jnt_range[1:, 1]
+    joint_clip_low = joint_low + JOINT_LIMIT_MARGIN_RAD
+    joint_clip_high = joint_high - JOINT_LIMIT_MARGIN_RAD
     root_joint_id = mujoco.mj_name2id(
         model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint"
     )
@@ -338,6 +369,12 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
     command = command_values.astype(np.float32)
 
     for frame in range(frames):
+        if np.any(joint_limited):
+            data.qpos[joint_qpos_addresses[joint_limited]] = np.clip(
+                data.qpos[joint_qpos_addresses[joint_limited]],
+                joint_clip_low[joint_limited],
+                joint_clip_high[joint_limited],
+            )
         mujoco.mj_forward(model, data)
         joint_pos[frame] = data.qpos[joint_qpos_addresses]
         joint_vel[frame] = data.qvel[joint_qvel_addresses]
@@ -346,6 +383,11 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
         angular_velocity, linear_velocity = _body_world_velocities(model, data)
         body_ang_vel_w[frame] = angular_velocity
         body_lin_vel_w[frame] = linear_velocity
+        frame_command = _command_for_frame(
+            command,
+            frame=frame,
+            phase_period_s=config.phase_period_s,
+        )
 
         observation = _observation(
             model,
@@ -355,7 +397,7 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
             joint_qpos_addresses=joint_qpos_addresses,
             joint_qvel_addresses=joint_qvel_addresses,
             previous_action=previous_action,
-            command=command,
+            command=frame_command,
         )
         action_batch = np.asarray(
             session.run(["actions"], {"obs": observation[None, :]})[0], dtype=np.float32
@@ -363,7 +405,15 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
         if action_batch.shape != (1, len(joint_names)) or not np.isfinite(action_batch).all():
             raise PolicyRolloutError("ONNX action output must be finite with shape [1,14]")
         previous_action = action_batch[0].copy()
-        data.ctrl[:] = DEFAULT_POSE + previous_action
+        target = DEFAULT_POSE + previous_action
+        if np.any(joint_limited):
+            target = target.copy()
+            target[joint_limited] = np.clip(
+                target[joint_limited],
+                joint_clip_low[joint_limited],
+                joint_clip_high[joint_limited],
+            )
+        data.ctrl[:] = target
         for _ in range(CONTROL_DECIMATION):
             mujoco.mj_step(model, data)
 
@@ -382,6 +432,7 @@ def export_policy_rollout(config: PolicyRolloutConfig) -> Path:
                 duration_s=duration_s,
                 command=command_values,
                 seed=int(config.seed),
+                phase_period_s=config.phase_period_s,
             ),
             "scene_sha256": _sha256(MICRODUCK_SCENE_XML),
         },
