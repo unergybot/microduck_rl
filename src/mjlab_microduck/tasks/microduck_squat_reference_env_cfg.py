@@ -42,12 +42,12 @@ def make_microduck_squat_reference_env_cfg(play: bool = False) -> ManagerBasedRl
     cfg.rewards["reference_joint"] = RewardTermCfg(
         func=microduck_mdp.squat_reference_joint_track,
         weight=4.0,
-        params={"asset_cfg": robot_cfg, "command_name": "twist", "std": 0.35},
+        params={"asset_cfg": robot_cfg, "command_name": "twist", "std": 0.2},
     )
     cfg.rewards["reference_height"] = RewardTermCfg(
         func=microduck_mdp.squat_reference_height_track,
-        weight=2.0,
-        params={"asset_cfg": robot_cfg, "command_name": "twist", "std": 0.04},
+        weight=3.0,
+        params={"asset_cfg": robot_cfg, "command_name": "twist", "std": 0.008},
     )
     cfg.rewards["reference_completion"] = RewardTermCfg(
         func=microduck_mdp.squat_reference_completion,
