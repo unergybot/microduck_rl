@@ -715,6 +715,88 @@ def _rewrite_as_stand_bundle(root: Path, source: PolicyBundle) -> PolicyBundle:
     return load_verified_bundle(root)
 
 
+def _rewrite_as_squat_bundle(root: Path, source: PolicyBundle) -> PolicyBundle:
+    policy = source.policies[0]
+    actions = [
+        code_owned_action_definition(
+            code,
+            availability=(
+                "AVAILABLE" if code == "SQUAT_REFERENCE" else "UNAVAILABLE"
+            ),
+            policy_ref=policy.policyRef if code == "SQUAT_REFERENCE" else None,
+            unavailable_reason=(
+                None if code == "SQUAT_REFERENCE" else "POLICY_ARTIFACT_MISSING"
+            ),
+        )
+        for code in CODE_OWNED_ACTION_CODES
+    ]
+    unsigned = unsigned_policy_bundle_manifest(source).model_copy(
+        update={"policies": [policy], "actions": actions}
+    )
+    digests = {
+        source.model.path: source.model.digest,
+        policy.path: policy.digest,
+        **{item.path: item.digest for item in source.license.artifacts},
+    }
+    rewritten = publish_policy_bundle(unsigned, digests)
+    (root / "microduck-policy-bundle.json").write_text(
+        rewritten.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    return load_verified_bundle(root)
+
+
+def test_squat_reference_publishes_phase_command_and_settles_return_stand(
+    tmp_path: Path,
+) -> None:
+    """SQUAT_REFERENCE drives the cos/sin phase and succeeds after one full cycle."""
+    root = tmp_path / "bundle"
+    source = _write_verified_bundle(
+        root,
+        policy_output=np.zeros(14, dtype=np.float32),
+        action_code="SQUAT_REFERENCE",
+        task_id="Mjlab-SquatReference-Flat-MicroDuck",
+    )
+    bundle = _rewrite_as_squat_bundle(root, source)
+    runtime = MicroduckMujocoRuntime(root, bundle, realtime=False)
+    request = TaskCreateRequest(
+        schema="MICRODUCK_SIM_TASK_V1",
+        taskId="4" * 32,
+        actionCode="SQUAT_REFERENCE",
+        bundleVersion=bundle.bundleVersion,
+        bundleDigest=bundle.bundleDigest,
+        parameters={},
+        scenario={"terrain": "flat", "seed": 11},
+        requestedBy="squat-runtime-test",
+    )
+
+    squat_action = next(
+        action for action in bundle.actions if action.actionCode == "SQUAT_REFERENCE"
+    )
+    runtime.validate(squat_action, request)
+    handle = runtime.start(squat_action, request)
+    assert runtime._data.qpos[runtime._joint_qpos_indices[3]] == pytest.approx(
+        DEFAULT_JOINT_POSE[3], abs=0.05
+    )
+    sample = runtime.sample(handle)
+    for _ in range(299):
+        if not sample.running:
+            break
+        sample = runtime.sample(handle)
+
+    evidence = runtime.safe_stop(handle, "TASK_COMPLETE")
+    assert sample.terminalState == "SUCCEEDED"
+    assert sample.stopReason == "RETURN_STAND_AFTER_SQUAT"
+    assert evidence.metrics["resetProfile"] == "DEFAULT_STANDING"
+    assert evidence.metrics["returnPoseError"] <= 0.12
+    assert evidence.metrics["minimumCrouchHeightM"] > 0.0
+    # One 5.0 s cycle at 50 Hz ends the governed squat reference episode.
+    assert evidence.metrics["steps"] <= 251
+    # The phase advanced through one full cycle and wrapped back to the start.
+    assert runtime._squat_phase == pytest.approx(0.0, abs=1e-9)
+    assert runtime._command.twist[0] == pytest.approx(1.0, abs=1e-5)
+    assert runtime._command.twist[1] == pytest.approx(0.0, abs=1e-5)
+
+
 def test_runtime_contract_exposes_only_controlled_servos() -> None:
     """Including passive roller/backlash joints would misalign every policy output."""
     assert MicroduckMujocoRuntime.controlled_joint_names == CONTROLLED_SERVO_JOINTS

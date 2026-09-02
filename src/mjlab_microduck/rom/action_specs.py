@@ -37,6 +37,20 @@ STAND_SETTLEMENT_LIMITS = StandSettlementLimits(
 
 
 @dataclass(frozen=True)
+class SquatReturnLimits:
+    """Code-owned predicates for a governed RETURN_STAND_AFTER_SQUAT completion."""
+
+    crouch_height_max_m: float
+    return_pose_error_max_rad: float
+
+
+SQUAT_RETURN_LIMITS = SquatReturnLimits(
+    crouch_height_max_m=0.115,
+    return_pose_error_max_rad=0.12,
+)
+
+
+@dataclass(frozen=True)
 class RuntimeActionSpec:
     action_code: str
     execution_mode: Literal["DISCRETE", "CONTINUOUS_LEASE"]
@@ -219,8 +233,7 @@ ACTION_RUNTIME_SPECS.update(
                 fall_policy="FAIL_ON_FALL",
                 completion_profile="RETURN_STAND_AFTER_SQUAT",
                 metric_keys=("minimumCrouchHeightM", "returnPoseError"),
-                supported=False,
-                unavailable_reason="REFERENCE_POLICY_UNQUALIFIED",
+                supported=True,
             ),
             _unsupported(
                 "KICK_LEFT",
@@ -314,6 +327,7 @@ _LESS_IS_BETTER_METRICS = {
     "standPoseError",
     "sitPoseError",
     "settlingError",
+    "minimumCrouchHeightM",
     "returnPoseError",
     "yawRateError",
 }
@@ -351,7 +365,11 @@ for _code, _spec in tuple(ACTION_RUNTIME_SPECS.items()):
             for metric in _spec.metric_keys
         ),
         qualification_success_stop_reason=(
-            "STAND_POSE_SETTLED" if _code == "STAND" else "MAX_STEPS_REACHED"
+            "STAND_POSE_SETTLED"
+            if _code == "STAND"
+            else "RETURN_STAND_AFTER_SQUAT"
+            if _code == "SQUAT_REFERENCE"
+            else "MAX_STEPS_REACHED"
         ),
         qualification_min_settled_steps=(
             STAND_SETTLEMENT_LIMITS.required_consecutive_steps
@@ -359,6 +377,10 @@ for _code, _spec in tuple(ACTION_RUNTIME_SPECS.items()):
             else 0
         ),
         qualification_completion_metric_max=(
-            STAND_SETTLEMENT_LIMITS.pose_error_max_rad if _code == "STAND" else None
+            STAND_SETTLEMENT_LIMITS.pose_error_max_rad
+            if _code == "STAND"
+            else SQUAT_RETURN_LIMITS.crouch_height_max_m
+            if _code == "SQUAT_REFERENCE"
+            else None
         ),
     )

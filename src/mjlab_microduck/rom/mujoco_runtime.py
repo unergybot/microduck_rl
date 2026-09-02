@@ -28,7 +28,11 @@ from .action_catalog import (
     validate_code_owned_lease,
     validate_code_owned_parameters,
 )
-from .action_specs import ACTION_RUNTIME_SPECS, STAND_SETTLEMENT_LIMITS
+from .action_specs import (
+    ACTION_RUNTIME_SPECS,
+    SQUAT_RETURN_LIMITS,
+    STAND_SETTLEMENT_LIMITS,
+)
 from .contracts import (
     ACTION_CONTRACT,
     CONTROLLED_SERVO_JOINTS,
@@ -162,6 +166,8 @@ class MicroduckMujocoRuntime:
         self._tracking_error_sum = 0.0
         self._tracking_error_max = 0.0
         self._tracking_error_samples = 0
+        self._squat_phase = 0.0
+        self._squat_return_pose_error: float | None = None
         self._settled_steps = 0
         self._settled_pose_error_max = 0.0
         self._settled_trunk_height_min_m = math.inf
@@ -1048,6 +1054,8 @@ class MicroduckMujocoRuntime:
                     )
                     self._tracking_error_samples += 1
                     self._update_stand_settlement_locked(tracking_error)
+                elif self._active_action.actionCode == "SQUAT_REFERENCE":
+                    self._advance_squat_reference_locked()
                 self._require_finite_simulation_state()
                 self._check_joint_limits()
                 self._check_fall_locked()
@@ -1134,6 +1142,16 @@ class MicroduckMujocoRuntime:
             if template.parameter_schema.get("x-microduck-fixed-goal") != "STAND":
                 raise ValueError("code-owned STAND fixed posture goal is invalid")
             command = DeploymentCommand.zero()
+            return command, command, None
+        if action_code == "SQUAT_REFERENCE":
+            validate_code_owned_parameters(action_code, parameters)
+            self._squat_phase = 0.0
+            self._squat_return_pose_error = None
+            command = DeploymentCommand(
+                twist=self._squat_reference_twist_locked(),
+                head_pose=np.zeros(4, dtype=np.float32),
+                body_pose=np.zeros(6, dtype=np.float32),
+            )
             return command, command, None
         raise ValueError("runtime action has no implemented typed command profile")
 
@@ -1277,6 +1295,38 @@ class MicroduckMujocoRuntime:
         delta = self._encoder_positions() - DEFAULT_JOINT_POSE
         return float(np.sqrt(np.mean(np.square(delta))))
 
+    def _squat_reference_twist_locked(self) -> NDArray[np.float32]:
+        angle = 2.0 * math.pi * self._squat_phase
+        return np.asarray(
+            [math.cos(angle), math.sin(angle), 0.0], dtype=np.float32
+        )
+
+    def _squat_return_pose_error_locked(self) -> float:
+        delta = self._encoder_positions() - DEFAULT_JOINT_POSE
+        return float(np.mean(np.abs(delta)))
+
+    def _advance_squat_reference_locked(self) -> None:
+        """Publish the cos/sin phase command and settle RETURN_STAND_AFTER_SQUAT."""
+        period = ACTION_RUNTIME_SPECS["SQUAT_REFERENCE"].phase_period_s
+        if not period or period <= 0.0:
+            raise ValueError("squat reference phase period must be positive")
+        previous_phase = self._squat_phase
+        self._squat_phase = (previous_phase + _CONTROL_PERIOD_S / period) % 1.0
+        self._command = DeploymentCommand(
+            twist=self._squat_reference_twist_locked(),
+            head_pose=self._command.head_pose,
+            body_pose=self._command.body_pose,
+        )
+        if self._squat_phase < previous_phase:
+            self._squat_return_pose_error = self._squat_return_pose_error_locked()
+            if (
+                self._squat_return_pose_error
+                <= SQUAT_RETURN_LIMITS.return_pose_error_max_rad
+            ):
+                self._terminal_state = "SUCCEEDED"
+                self._terminal_reason = "RETURN_STAND_AFTER_SQUAT"
+                self._stop_event.set()
+
     def _reset_stand_settlement_window_locked(self) -> None:
         self._settled_steps = 0
         self._settled_pose_error_max = 0.0
@@ -1356,6 +1406,16 @@ class MicroduckMujocoRuntime:
             "SWIZZLE",
         }:
             metrics.update(self._tracking_metrics_locked())
+        if self._active_action.actionCode == "SQUAT_REFERENCE":
+            metrics["minimumCrouchHeightM"] = round(self._min_base_height_m, 6)
+            metrics["returnPoseError"] = round(
+                (
+                    self._squat_return_pose_error
+                    if self._squat_return_pose_error is not None
+                    else self._squat_return_pose_error_locked()
+                ),
+                6,
+            )
         if self._active_action.actionCode == "VELSTAND_VELOCITY":
             metrics["uprightSteps"] = self._upright_steps
             metrics["standFraction"] = round(
