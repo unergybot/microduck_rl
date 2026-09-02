@@ -16,7 +16,11 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
-from .action_specs import ACTION_RUNTIME_SPECS, STAND_SETTLEMENT_LIMITS
+from .action_specs import (
+    ACTION_RUNTIME_SPECS,
+    SQUAT_RETURN_LIMITS,
+    STAND_SETTLEMENT_LIMITS,
+)
 from .contracts import (
     ActionDefinition,
     ContractModel,
@@ -161,6 +165,8 @@ class QualificationRollout(ContractModel):
     actionMetricValue: float | None
     yawRotationRad: float | None = None
     standPoseError: float | None = None
+    minimumCrouchHeightM: float | None = None
+    returnPoseError: float | None = None
     settledPoseErrorMax: float | None = None
     settledTrunkHeightMinM: float | None = None
     settledTrunkHeightMaxM: float | None = None
@@ -284,6 +290,8 @@ _ACTION_METRIC_DERIVATIONS = {
     "standFraction": "UPRIGHT_FRACTION",
     "yawRotationRad": "YAW_ACCUMULATOR",
     "standPoseError": "STAND_FINAL_POSE_ERROR",
+    "minimumCrouchHeightM": "MIN_CROUCH_HEIGHT",
+    "returnPoseError": "SQUAT_RETURN_POSE_ERROR",
 }
 
 
@@ -302,6 +310,13 @@ def _derive_action_metric_value(rollout: QualificationRollout) -> float:
         return rollout.yawRotationRad
     if derivation == "STAND_FINAL_POSE_ERROR" and rollout.standPoseError is not None:
         return rollout.standPoseError
+    if derivation == "MIN_CROUCH_HEIGHT" and rollout.minimumCrouchHeightM is not None:
+        return rollout.minimumCrouchHeightM
+    if (
+        derivation == "SQUAT_RETURN_POSE_ERROR"
+        and rollout.returnPoseError is not None
+    ):
+        return rollout.returnPoseError
     raise ValueError("qualification rollout action metric derivation is undefined")
 
 
@@ -561,6 +576,8 @@ def _validate_rollout_semantics(
         rollout.actionMetricValue,
         rollout.yawRotationRad,
         rollout.standPoseError,
+        rollout.minimumCrouchHeightM,
+        rollout.returnPoseError,
         rollout.settledPoseErrorMax,
         rollout.settledTrunkHeightMinM,
         rollout.settledTrunkHeightMaxM,
@@ -594,6 +611,8 @@ def _validate_rollout_semantics(
         rollout.energyProxy,
         rollout.maxAbsAction,
         rollout.standPoseError,
+        rollout.minimumCrouchHeightM,
+        rollout.returnPoseError,
         rollout.settledPoseErrorMax,
         rollout.settledTrunkHeightMinM,
         rollout.settledTrunkHeightMaxM,
@@ -602,29 +621,43 @@ def _validate_rollout_semantics(
     )
     if any(value is not None and value < 0.0 for value in nonnegative_values):
         raise ValueError("qualification rollout norm evidence must be nonnegative")
-    if any(
-        value is None
-        for value in (
-            rollout.trackingError,
+    if declaration.actionCode == "SQUAT_REFERENCE":
+        # The squat phase command has no code-owned per-step target without the
+        # Blender reference archive, so squat rollouts carry no tracking series.
+        if any(
+            value is not None
+            for value in (
+                rollout.trackingError,
+                rollout.trackingErrorSum,
+                rollout.trackingErrorMax,
+            )
+        ) or rollout.trackingSampleCount:
+            raise ValueError("qualification rollout tracking evidence is invalid")
+        derived_tracking_mean = None
+    else:
+        if any(
+            value is None
+            for value in (
+                rollout.trackingError,
+                rollout.trackingErrorSum,
+                rollout.trackingErrorMax,
+            )
+        ):
+            raise ValueError("qualification rollout tracking evidence is incomplete")
+        assert rollout.trackingError is not None
+        assert rollout.trackingErrorSum is not None
+        assert rollout.trackingErrorMax is not None
+        if rollout.trackingSampleCount != rollout.steps:
+            raise ValueError("qualification rollout tracking evidence is incomplete")
+        derived_tracking_mean = canonical_tracking_mean(
             rollout.trackingErrorSum,
-            rollout.trackingErrorMax,
+            rollout.trackingSampleCount,
         )
-    ):
-        raise ValueError("qualification rollout tracking evidence is incomplete")
-    assert rollout.trackingError is not None
-    assert rollout.trackingErrorSum is not None
-    assert rollout.trackingErrorMax is not None
-    if rollout.trackingSampleCount != rollout.steps:
-        raise ValueError("qualification rollout tracking evidence is incomplete")
-    derived_tracking_mean = canonical_tracking_mean(
-        rollout.trackingErrorSum,
-        rollout.trackingSampleCount,
-    )
-    if (
-        rollout.trackingError != derived_tracking_mean
-        or rollout.trackingErrorMax + 1e-6 < derived_tracking_mean
-    ):
-        raise ValueError("qualification rollout tracking evidence is incomplete")
+        if (
+            rollout.trackingError != derived_tracking_mean
+            or rollout.trackingErrorMax + 1e-6 < derived_tracking_mean
+        ):
+            raise ValueError("qualification rollout tracking evidence is incomplete")
 
     if rollout.actionMetric != declaration.thresholds.actionMetric:
         raise ValueError("qualification rollout action metric identity is invalid")
@@ -725,14 +758,27 @@ def _validate_rollout_semantics(
         return derived_tracking_mean, derived_action_metric
 
     if rollout.terminalState == "SUCCEEDED":
-        completion_valid = (
-            spec.completion_profile == "STAND_POSE_SETTLED"
-            and rollout.stopReason == spec.qualification_success_stop_reason
-            and rollout.settledSteps == spec.qualification_min_settled_steps
-            and spec.qualification_completion_metric_max is not None
-            and derived_action_metric <= spec.qualification_completion_metric_max
-            and not rollout.fallen
-        )
+        if spec.completion_profile == "RETURN_STAND_AFTER_SQUAT":
+            completion_valid = (
+                rollout.stopReason == spec.qualification_success_stop_reason
+                and spec.qualification_completion_metric_max is not None
+                and derived_action_metric
+                <= spec.qualification_completion_metric_max
+                and rollout.returnPoseError is not None
+                and rollout.returnPoseError
+                <= SQUAT_RETURN_LIMITS.return_pose_error_max_rad
+                and not rollout.fallen
+            )
+        else:
+            completion_valid = (
+                spec.completion_profile == "STAND_POSE_SETTLED"
+                and rollout.stopReason == spec.qualification_success_stop_reason
+                and rollout.settledSteps == spec.qualification_min_settled_steps
+                and spec.qualification_completion_metric_max is not None
+                and derived_action_metric
+                <= spec.qualification_completion_metric_max
+                and not rollout.fallen
+            )
         if not rollout.success or not completion_valid:
             raise ValueError("qualification discrete completion evidence is invalid")
     elif rollout.terminalState == "RUNNING":
@@ -810,8 +856,7 @@ def recompute_action_qualification(
     passed = (
         success_rate >= thresholds.minSuccessRate
         and fall_rate <= thresholds.maxFallRate
-        and mean_tracking is not None
-        and mean_tracking <= thresholds.maxMeanTrackingError
+        and (mean_tracking is None or mean_tracking <= thresholds.maxMeanTrackingError)
         and mean_distance >= thresholds.minMeanDistanceM
         and mean_energy <= thresholds.maxMeanEnergyProxy
         and actuator_clamp_steps <= thresholds.maxActuatorClampSteps
@@ -920,10 +965,17 @@ def _qualification_rollout_from_terminal(
     physical_joint_limit_violations = _raw_integer(
         metrics, "physicalJointLimitViolations"
     )
-    tracking_error = _raw_float(metrics, "trackingError")
-    tracking_error_sum = _raw_float(metrics, "trackingErrorSum")
-    tracking_error_max = _raw_float(metrics, "trackingErrorMax")
-    tracking_sample_count = _raw_integer(metrics, "trackingErrorSamples")
+    squat_reference = declaration.actionCode == "SQUAT_REFERENCE"
+    if squat_reference:
+        tracking_error = None
+        tracking_error_sum = None
+        tracking_error_max = None
+        tracking_sample_count = 0
+    else:
+        tracking_error = _raw_float(metrics, "trackingError")
+        tracking_error_sum = _raw_float(metrics, "trackingErrorSum")
+        tracking_error_max = _raw_float(metrics, "trackingErrorMax")
+        tracking_sample_count = _raw_integer(metrics, "trackingErrorSamples")
     action_metric_value = _raw_float(
         metrics, declaration.thresholds.actionMetric
     )
@@ -940,6 +992,16 @@ def _qualification_rollout_from_terminal(
     stand_pose_error = (
         _raw_float(metrics, "standPoseError")
         if declaration.actionCode == "STAND"
+        else None
+    )
+    minimum_crouch_height = (
+        _raw_float(metrics, "minimumCrouchHeightM")
+        if declaration.actionCode == "SQUAT_REFERENCE"
+        else None
+    )
+    return_pose_error = (
+        _raw_float(metrics, "returnPoseError")
+        if declaration.actionCode == "SQUAT_REFERENCE"
         else None
     )
     settled_steps = (
@@ -1015,6 +1077,8 @@ def _qualification_rollout_from_terminal(
         actionMetricValue=action_metric_value,
         yawRotationRad=yaw_rotation_rad,
         standPoseError=stand_pose_error,
+        minimumCrouchHeightM=minimum_crouch_height,
+        returnPoseError=return_pose_error,
         settledPoseErrorMax=settled_pose_error_max,
         settledTrunkHeightMinM=settled_trunk_height_min_m,
         settledTrunkHeightMaxM=settled_trunk_height_max_m,

@@ -216,14 +216,15 @@ def test_catalog_covers_every_user_intent_once():
         assert spec.command_profile
         assert spec.fall_policy
         assert spec.metric_keys
-        if not spec.supported and spec.action_code != "SQUAT_REFERENCE":
+        if not spec.supported:
             assert spec.unavailable_reason == "RUNTIME_SEMANTICS_UNSUPPORTED"
     assert ACTION_RUNTIME_SPECS["GROUND_PICK"].phase_period_s == 4.0
     squat = ACTION_RUNTIME_SPECS["SQUAT_REFERENCE"]
     assert squat.task_ids == ("Mjlab-SquatReference-Flat-MicroDuck",)
     assert squat.phase_period_s == 5.0
-    assert squat.supported is False
-    assert squat.unavailable_reason == "REFERENCE_POLICY_UNQUALIFIED"
+    assert squat.supported is True
+    assert squat.unavailable_reason is None
+    assert squat.qualification_success_stop_reason == "RETURN_STAND_AFTER_SQUAT"
     assert ACTION_RUNTIME_SPECS["ROLLER_CROUCH"].phase_period_s == 5.0
     assert ACTION_RUNTIME_SPECS["SPIN"].phase_period_s == 4.0
     assert ACTION_RUNTIME_SPECS["KICK_LEFT"].kick_mirror == "LEFT_RIGHT_EXACT"
@@ -382,24 +383,39 @@ def test_actions_without_exact_runtime_scenario_semantics_remain_unavailable(
     assert standup.unavailableReason == "RUNTIME_SEMANTICS_UNSUPPORTED"
 
 
-def test_squat_reference_is_visible_but_unavailable_until_policy_is_qualified(
-    tmp_path: Path,
-):
-    """The video PoC action must be discoverable without becoming executable by default."""
-    policy = write_minimal_onnx(tmp_path / "squat-reference.onnx")
+def test_squat_reference_is_available_with_a_policy_artifact(tmp_path: Path):
+    """A shipped squat artifact makes the supported reference action executable."""
+    policy = write_release_onnx(
+        tmp_path / "squat-reference.onnx",
+        task_id="Mjlab-SquatReference-Flat-MicroDuck",
+    )
     bundle = build_bundle(
-        minimal_request(tmp_path, artifacts={"SQUAT_REFERENCE": policy})
+        BundleBuildRequest(
+            release="1.0.0",
+            output_zip=tmp_path / "squat-qualified.zip",
+            artifacts={"SQUAT_REFERENCE": policy},
+            model_path=MICRODUCK_WALK_XML.with_name("scene_walk.xml"),
+            model_terrain="flat",
+            scenario_profile="SEEDED_SERVO_RESET_V1",
+            source_repository="microduck-rl",
+            source_commit="a" * 40,
+            created_at=datetime(2026, 8, 29, tzinfo=UTC),
+            **TEST_LICENSE_FIELDS,
+            checkpoint="model_100.pt",
+            experiment_ref="mjlab_microduck/test-run",
+        )
     ).manifest
 
     squat = next(
         action for action in bundle.actions if action.actionCode == "SQUAT_REFERENCE"
     )
-    assert squat.availability == "UNAVAILABLE"
-    assert squat.unavailableReason == "REFERENCE_POLICY_UNQUALIFIED"
+    assert squat.availability == "AVAILABLE"
+    assert squat.unavailableReason is None
+    assert squat.policyRef is not None
 
 
-def test_squat_reference_reports_unqualified_policy_without_artifact(tmp_path: Path):
-    """A missing reference artifact keeps the release blocker, not a generic error."""
+def test_squat_reference_without_artifact_reports_missing_policy(tmp_path: Path):
+    """A supported action without an artifact reports the generic artifact blocker."""
     policy = write_minimal_onnx(tmp_path / WALK_ONNX)
     bundle = build_bundle(
         minimal_request(tmp_path, artifacts={"WALK_VELOCITY": policy})
@@ -409,7 +425,7 @@ def test_squat_reference_reports_unqualified_policy_without_artifact(tmp_path: P
         action for action in bundle.actions if action.actionCode == "SQUAT_REFERENCE"
     )
     assert squat.availability == "UNAVAILABLE"
-    assert squat.unavailableReason == "REFERENCE_POLICY_UNQUALIFIED"
+    assert squat.unavailableReason == "POLICY_ARTIFACT_MISSING"
     assert squat.policyRef is None
 
     spin = next(action for action in bundle.actions if action.actionCode == "SPIN")
