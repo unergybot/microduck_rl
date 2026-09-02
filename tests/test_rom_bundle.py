@@ -194,6 +194,7 @@ def test_catalog_covers_every_user_intent_once():
         "SIT",
         "STAND",
         "GROUND_PICK",
+        "SQUAT_REFERENCE",
         "KICK_LEFT",
         "KICK_RIGHT",
         "ROULADE",
@@ -215,9 +216,14 @@ def test_catalog_covers_every_user_intent_once():
         assert spec.command_profile
         assert spec.fall_policy
         assert spec.metric_keys
-        if not spec.supported:
+        if not spec.supported and spec.action_code != "SQUAT_REFERENCE":
             assert spec.unavailable_reason == "RUNTIME_SEMANTICS_UNSUPPORTED"
     assert ACTION_RUNTIME_SPECS["GROUND_PICK"].phase_period_s == 4.0
+    squat = ACTION_RUNTIME_SPECS["SQUAT_REFERENCE"]
+    assert squat.task_ids == ("Mjlab-SquatReference-Flat-MicroDuck",)
+    assert squat.phase_period_s == 5.0
+    assert squat.supported is False
+    assert squat.unavailable_reason == "REFERENCE_POLICY_UNQUALIFIED"
     assert ACTION_RUNTIME_SPECS["ROLLER_CROUCH"].phase_period_s == 5.0
     assert ACTION_RUNTIME_SPECS["SPIN"].phase_period_s == 4.0
     assert ACTION_RUNTIME_SPECS["KICK_LEFT"].kick_mirror == "LEFT_RIGHT_EXACT"
@@ -242,6 +248,7 @@ def test_builder_emits_the_complete_code_owned_action_envelope(tmp_path: Path) -
         "SIT",
         "STAND",
         "GROUND_PICK",
+        "SQUAT_REFERENCE",
         "KICK_LEFT",
         "KICK_RIGHT",
         "ROULADE",
@@ -373,6 +380,22 @@ def test_actions_without_exact_runtime_scenario_semantics_remain_unavailable(
     )
     assert standup.availability == "UNAVAILABLE"
     assert standup.unavailableReason == "RUNTIME_SEMANTICS_UNSUPPORTED"
+
+
+def test_squat_reference_is_visible_but_unavailable_until_policy_is_qualified(
+    tmp_path: Path,
+):
+    """The video PoC action must be discoverable without becoming executable by default."""
+    policy = write_minimal_onnx(tmp_path / "squat-reference.onnx")
+    bundle = build_bundle(
+        minimal_request(tmp_path, artifacts={"SQUAT_REFERENCE": policy})
+    ).manifest
+
+    squat = next(
+        action for action in bundle.actions if action.actionCode == "SQUAT_REFERENCE"
+    )
+    assert squat.availability == "UNAVAILABLE"
+    assert squat.unavailableReason == "REFERENCE_POLICY_UNQUALIFIED"
 
 
 def test_roller_policy_is_unavailable_without_roller_model_capability(tmp_path: Path):

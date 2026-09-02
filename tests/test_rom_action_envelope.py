@@ -25,6 +25,7 @@ EXPECTED_ACTION_CODES = (
     "SIT",
     "STAND",
     "GROUND_PICK",
+    "SQUAT_REFERENCE",
     "KICK_LEFT",
     "KICK_RIGHT",
     "ROULADE",

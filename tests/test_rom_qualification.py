@@ -762,7 +762,7 @@ def test_optional_action_without_runtime_support_is_not_falsely_qualified(
 def test_production_builder_walk_only_release_promotes_with_complete_catalog(
     tmp_path: Path,
 ) -> None:
-    """Requiring declarations for 14 already-unavailable actions breaks the documented workflow."""
+    """Requiring declarations for 15 already-unavailable actions breaks the documented workflow."""
     fixture_root = tmp_path / "builder-input"
     fixture = _write_verified_bundle(fixture_root)
     policy = fixture_root / fixture.policies[0].path
@@ -791,7 +791,7 @@ def test_production_builder_walk_only_release_promotes_with_complete_catalog(
             experiment_ref="entity/project/run-id",
         )
     )
-    assert len(built.manifest.actions) == 15
+    assert len(built.manifest.actions) == 16
     candidate = tmp_path / "candidate"
     with zipfile.ZipFile(candidate_zip) as archive:
         archive.extractall(candidate)
@@ -803,8 +803,8 @@ def test_production_builder_walk_only_release_promotes_with_complete_catalog(
         timestamp=lambda: NOW,
     )
 
-    assert len(promoted.manifest.actions) == 15
-    assert len(promoted.report.actions) == 15
+    assert len(promoted.manifest.actions) == 16
+    assert len(promoted.report.actions) == 16
     assert [action.actionCode for action in promoted.manifest.actions] == [
         template.action_code for template in ACTION_TEMPLATES
     ]

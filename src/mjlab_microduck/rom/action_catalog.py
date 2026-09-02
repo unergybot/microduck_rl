@@ -144,6 +144,14 @@ ACTION_TEMPLATES: tuple[ActionTemplate, ...] = (
         None,
     ),
     ActionTemplate(
+        "SQUAT_REFERENCE",
+        "DISCRETE",
+        ("Mjlab-SquatReference-Flat-MicroDuck",),
+        _discrete_schema(),
+        _COMPLETION,
+        None,
+    ),
+    ActionTemplate(
         "KICK_LEFT",
         "DISCRETE",
         ("Mjlab-BallKick-Flat-MicroDuck",),
@@ -207,6 +215,7 @@ _CODE_OWNED_UNAVAILABLE_REASONS = frozenset(
         "POLICY_PROVENANCE_MISMATCH",
         "POLICY_INFERENCE_INVALID",
         "QUALIFICATION_FAILED",
+        "REFERENCE_POLICY_UNQUALIFIED",
     }
 )
 
