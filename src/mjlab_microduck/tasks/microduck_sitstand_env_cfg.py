@@ -477,7 +477,7 @@ def make_microduck_sitstand_env_cfg(
     )
     cfg.rewards["action_limit_margin"] = RewardTermCfg(
         func=microduck_mdp.action_limit_margin_penalty,
-        weight=-1.0,
+        weight=-5.0,
         params={"action_name": "joint_pos", "margin": 0.15},
     )
 
