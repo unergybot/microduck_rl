@@ -441,7 +441,7 @@ def make_microduck_sitstand_env_cfg(
 
     # ── Sim2real regularisers — MATCHED to velocity ─────────────────────────
     # velocity's exact set and absolute weights:
-    #   • action_rate_l2: -0.1 at stage 0, ramped -0.1 → -1.0 by iter 1500
+    #   • action_rate_l2: -0.5 at stage 0, ramped -0.5 → -1.0 by iter 500
     #   • body_ang_vel -0.05, angular_momentum -0.02
     #   • soft_landing dropped; joint_torques_l2 / neck_action_rate_l2 not added
     # Plus joint_torque_rate_l2 (anti-jitter), phased in once the transition
@@ -449,7 +449,7 @@ def make_microduck_sitstand_env_cfg(
     # per the regularizer-type lesson these smoothness terms damp jitter
     # WITHOUT blocking a slow big motion, so heavier-than-velocity would also
     # be defensible — start at parity, tighten only if the real robot shakes.
-    cfg.rewards["action_rate_l2"] = RewardTermCfg(func=mdp.action_rate_l2, weight=-0.1)
+    cfg.rewards["action_rate_l2"] = RewardTermCfg(func=mdp.action_rate_l2, weight=-0.5)
     cfg.rewards["joint_torque_rate_l2"] = RewardTermCfg(
         func=microduck_mdp.joint_torque_rate_l2, weight=0.0
     )
@@ -855,12 +855,9 @@ def make_microduck_sitstand_env_cfg(
         params={
             "reward_name":   "action_rate_l2",
             "weight_stages": [
-                {"step": 0,          "weight": -0.1},
-                {"step": 500 * 24,   "weight": -0.2},
-                {"step": 750 * 24,   "weight": -0.4},
-                {"step": 1000 * 24,  "weight": -0.6},
-                {"step": 1250 * 24,  "weight": -0.8},
-                {"step": 1500 * 24,  "weight": -1.0},
+                {"step": 0,          "weight": -0.5},
+                {"step": 250 * 24,   "weight": -0.75},
+                {"step": 500 * 24,   "weight": -1.0},
             ],
         },
     )

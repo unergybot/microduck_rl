@@ -12,3 +12,10 @@ def test_sitstand_policy_keeps_commanded_targets_inside_joint_limits() -> None:
     assert term.weight <= -5.0
     assert term.params["action_name"] == "joint_pos"
     assert term.params["margin"] == 0.15
+
+
+def test_sitstand_starts_with_strong_action_rate_damping() -> None:
+    cfg = make_microduck_sitstand_env_cfg()
+    assert cfg.rewards["action_rate_l2"].weight <= -0.5
+    stages = cfg.curriculum["action_rate_weight"].params["weight_stages"]
+    assert stages[0]["weight"] <= -0.5
