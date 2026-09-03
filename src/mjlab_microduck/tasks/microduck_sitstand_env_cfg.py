@@ -475,6 +475,11 @@ def make_microduck_sitstand_env_cfg(
         weight=-1.0,
         params={"action_name": "joint_pos", "overshoot": 0.05},
     )
+    cfg.rewards["action_limit_margin"] = RewardTermCfg(
+        func=microduck_mdp.action_limit_margin_penalty,
+        weight=-1.0,
+        params={"action_name": "joint_pos", "margin": 0.15},
+    )
 
     # The deployment runtime fails a task fatally on any hard-limit contact
     # (JOINT_LIMIT), so the policy must keep every servo well inside its range.
