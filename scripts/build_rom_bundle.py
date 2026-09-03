@@ -42,6 +42,7 @@ def main() -> None:
     )
     parser.add_argument("--checkpoint")
     parser.add_argument("--experiment-ref")
+    parser.add_argument("--action-scale", type=float, default=1.0)
     parser.add_argument("--qualification-file", action="append", default=[], type=Path)
     parser.add_argument("--software-license-id", required=True)
     parser.add_argument(
@@ -77,6 +78,7 @@ def main() -> None:
             scenario_profile=arguments.scenario_profile,
             checkpoint=arguments.checkpoint,
             experiment_ref=arguments.experiment_ref,
+            action_scale=arguments.action_scale,
             qualification_files=tuple(arguments.qualification_file),
             software_license_id=arguments.software_license_id,
             software_license_files=tuple(arguments.software_license_file),

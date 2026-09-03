@@ -20,7 +20,7 @@ from mjlab_microduck.rom.action_catalog import (
     validate_bundle_action_envelope,
 )
 from mjlab_microduck.rom.action_specs import ACTION_RUNTIME_SPECS
-from mjlab_microduck.rom.bundle import BundleBuildRequest, build_bundle
+from mjlab_microduck.rom.bundle import BundleBuildRequest, _contracts, build_bundle
 from mjlab_microduck.rom.contracts import UnsignedPolicyBundleManifest, sha256_prefixed
 from mjlab_microduck.rom.main import load_verified_bundle
 
@@ -180,6 +180,11 @@ def minimal_request(
         model_license_status="DISTRIBUTION_CLEARED",
         model_license_files=(license_file,),
     )
+
+
+def test_action_scale_is_declared_for_runtime() -> None:
+    _, contract = _contracts(0.8)
+    assert contract.scaling == {"actionScale": 0.8}
 
 
 def test_catalog_covers_every_user_intent_once():
