@@ -712,6 +712,14 @@ def make_microduck_velocity_env_cfg(
         weight=2.0,
         params={"command_name": "head_pose", "std": 0.5},
     )
+
+    # Deployment-runtime parity: the ROM runtime fails fatally on hard-limit
+    # contact, so walking must keep every servo inside a margin band too.
+    cfg.rewards["joint_limit_proximity"] = RewardTermCfg(
+        func=microduck_mdp.joint_pos_limit_proximity,
+        weight=-2.0,
+        params={"asset_cfg": SceneEntityCfg("robot"), "margin": 0.15},
+    )
     # body_pose: infra kept intact but DISABLED (weight 0) — the obs slot and
     # command stay alive for envs that raise the weight (standup).
     cfg.rewards["body_pose_tracking"] = RewardTermCfg(

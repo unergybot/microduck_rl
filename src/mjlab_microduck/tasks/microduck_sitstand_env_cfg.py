@@ -461,6 +461,17 @@ def make_microduck_sitstand_env_cfg(
         params={"sensor_name": self_collision_cfg.name},
     )
 
+    # The deployment runtime fails a task fatally on any hard-limit contact
+    # (JOINT_LIMIT), so the policy must keep every servo well inside its range.
+    # The base joint_pos_limits reward only fires past the soft limit and is
+    # near-useless against a boundary-riding knee during the sit-to-stand
+    # push (see mdp.joint_pos_limit_proximity for the motivating case).
+    cfg.rewards["joint_limit_proximity"] = RewardTermCfg(
+        func=microduck_mdp.joint_pos_limit_proximity,
+        weight=-2.0,
+        params={"asset_cfg": SceneEntityCfg("robot"), "margin": 0.15},
+    )
+
     # Drop the base "upright" Gaussian — replaced by the two-layer upright above.
     if "upright" in cfg.rewards:
         del cfg.rewards["upright"]

@@ -113,6 +113,9 @@ def _motion(command: DeploymentCommand) -> dict[str, list[float]]:
     }
 
 
+_JOINT_TARGET_MARGIN_RAD = 1e-3
+
+
 class MicroduckMujocoRuntime:
     """Execute verified MicroDuck policy artifacts at a governed 50 Hz rate."""
 
@@ -1088,6 +1091,23 @@ class MicroduckMujocoRuntime:
         limited = target.copy()
         changed = False
         for index, actuator_id in enumerate(self._actuator_indices):
+            joint_id = self._model.actuator_trnid[actuator_id, 0]
+            low, high = self._model.jnt_range[joint_id]
+            if self._model.jnt_limited[joint_id]:
+                # A position target must never command a joint past its own
+                # range, and it must stay a safety margin inside it: MuJoCo
+                # soft limits let a boundary-riding servo settle past the
+                # range, which would trip the fatal JOINT_LIMIT check even
+                # though the policy intent is reachable.
+                clipped = float(
+                    np.clip(
+                        limited[index],
+                        low + _JOINT_TARGET_MARGIN_RAD,
+                        high - _JOINT_TARGET_MARGIN_RAD,
+                    )
+                )
+                changed |= clipped != float(limited[index])
+                limited[index] = clipped
             if self._model.actuator_ctrllimited[actuator_id]:
                 low, high = self._model.actuator_ctrlrange[actuator_id]
                 clipped = float(np.clip(limited[index], low, high))

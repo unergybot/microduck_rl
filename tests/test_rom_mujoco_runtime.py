@@ -745,6 +745,28 @@ def _rewrite_as_squat_bundle(root: Path, source: PolicyBundle) -> PolicyBundle:
     return load_verified_bundle(root)
 
 
+def test_position_targets_are_clamped_to_joint_range(tmp_path: Path) -> None:
+    """A policy target beyond a joint range must clamp, never ride the limit."""
+    root = tmp_path / "bundle"
+    source = _write_verified_bundle(
+        root,
+        policy_output=np.zeros(14, dtype=np.float32),
+        action_code="STAND",
+        task_id="Mjlab-SitStand-Flat-MicroDuck",
+    )
+    bundle = _rewrite_as_stand_bundle(root, source)
+    runtime = MicroduckMujocoRuntime(root, bundle, realtime=False)
+
+    raw = np.full(14, 50.0, dtype=np.float32)
+    limited, changed = runtime._limit_targets(raw)
+    assert changed
+    for index, actuator_id in enumerate(runtime._actuator_indices):
+        joint_id = runtime._model.actuator_trnid[actuator_id, 0]
+        if runtime._model.jnt_limited[joint_id]:
+            low, high = runtime._model.jnt_range[joint_id]
+            assert low <= limited[index] <= high
+
+
 def test_squat_reference_publishes_phase_command_and_settles_return_stand(
     tmp_path: Path,
 ) -> None:
