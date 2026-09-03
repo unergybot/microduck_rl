@@ -224,7 +224,11 @@ def make_microduck_sitstand_env_cfg(
     # ── Actions ───────────────────────────────────────────────────────────────
     joint_pos_action = cfg.actions["joint_pos"]
     assert isinstance(joint_pos_action, JointPositionActionCfg)
-    joint_pos_action.scale = 1.0
+    # Keep the commanded target away from the hard joint boundary.  The
+    # deployment servo can overshoot a boundary-riding target even when the
+    # target itself is clipped, so stand/sit training must learn within a
+    # conservative 0.8 rad action envelope.
+    joint_pos_action.scale = 0.8
 
     # ── Rewards: drop walking-specific terms ──────────────────────────────────
     for name in [
