@@ -465,6 +465,17 @@ def make_microduck_sitstand_env_cfg(
         params={"sensor_name": self_collision_cfg.name},
     )
 
+    # Penalise policy commands that drive a target beyond the hard joint range.
+    # This is deliberately policy-side (rather than an env-only action clip),
+    # so the learned ONNX behaviour carries the safety constraint into ROM
+    # deployment.  A small 0.05 rad allowance preserves the reachable sitting
+    # keyframe while discouraging boundary-riding servo targets.
+    cfg.rewards["action_over_limit"] = RewardTermCfg(
+        func=microduck_mdp.action_over_limit_penalty,
+        weight=-1.0,
+        params={"action_name": "joint_pos", "overshoot": 0.05},
+    )
+
     # The deployment runtime fails a task fatally on any hard-limit contact
     # (JOINT_LIMIT), so the policy must keep every servo well inside its range.
     # The base joint_pos_limits reward only fires past the soft limit and is
