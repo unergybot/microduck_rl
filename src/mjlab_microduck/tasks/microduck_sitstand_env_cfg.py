@@ -85,9 +85,13 @@ EPISODE_LENGTH_S = 12.0
 # lower bound must comfortably exceed a gentle transition (~1.5 s) plus some
 # rest, so "arrive, then hold still" is always trained.
 POSTURE_DWELL_S  = (3.5, 6.5)
-# Probability a resample commands SIT (vs STAND). 0.5 → all four combinations
-# of (reset state × command) get equal coverage, including both holds.
-SIT_PROB         = 0.5
+# Probability a resample commands SIT (vs STAND). The deployment-critical
+# STAND action starts from TRAINED_SITTING, so this first curriculum pass gives
+# the rise direction more on-policy data: with the reset mix below this yields
+# 0.75 × 0.75 = 56.25% seated→stand episodes (rather than 25% at 0.5/0.5).
+# SIT remains present for command-conditioned regression and can be restored
+# to 0.5 after a qualified stand policy exists.
+SIT_PROB         = 0.25
 
 # ── SIT keyframe (joint_pos index → angle in rad). Single fixed target. ─────
 # STABILITY-VERIFIED 2026-07-27 (sit env, scratchpad sweep_sit_pose2.py):
@@ -642,19 +646,17 @@ def make_microduck_sitstand_env_cfg(
     # Base reset: standing, just above the measured equilibrium (STAND_Z=0.115).
     cfg.events["reset_base"].params["pose_range"]["z"] = (0.11, 0.12)
 
-    # Reset-state mix: 50% standing / 50% already seated (SIT keyframe with
-    # joint/tilt noise). Combined with the independent 50/50 posture command
-    # this trains all four cases — sit-from-stand, rise-from-sit, hold-stand,
-    # hold-sit — and hands the policy both goal states' values directly (the
-    # sit env's discovery-bootstrap lesson, extended to both ends).
+    # Reset-state mix: deliberately bias toward already seated starts. Combined
+    # with SIT_PROB=0.25 this makes seated→STAND the majority transition while
+    # retaining standing starts and SIT commands for bidirectional coverage.
     cfg.events["set_ground_state"] = EventTermCfg(
         func=microduck_mdp.set_random_ground_state,
         mode="reset",
         params={
             "face_down_prob":          0.0,
             "face_up_prob":            0.0,
-            "sitting_prob":            0.5,
-            "standing_prob":           0.5,
+            "sitting_prob":            0.75,
+            "standing_prob":           0.25,
             "sitting_joint_overrides": SITTING_TARGET_OVERRIDES,
             "sitting_joint_noise_std": 0.10,           # ≈ 6° per joint
             "sitting_tilt_max":        math.radians(8),
