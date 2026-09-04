@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Mapping
@@ -67,6 +68,9 @@ class BundleBuildRequest:
     experiment_ref: str | None = None
     qualification_files: tuple[Path, ...] = ()
     mirroring_transforms: Mapping[str, Mapping[str, Any]] | None = None
+    # Scalar position-action scale used by the runtime.  Keep this explicit in
+    # the bundle contract so training and deployment cannot silently diverge.
+    action_scale: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -227,8 +231,11 @@ def _license_artifacts(
     return staged, artifacts, references(software_sources), references(model_sources)
 
 
-def _contracts() -> tuple[ObservationContract, ActionContract]:
+def _contracts(action_scale: float = 1.0) -> tuple[ObservationContract, ActionContract]:
     from .contracts import CONTROLLED_SERVO_JOINTS, OBSERVATION_FIELDS
+
+    if not math.isfinite(action_scale) or action_scale <= 0.0:
+        raise ValueError("action_scale must be a finite positive number")
 
     return (
         ObservationContract(
@@ -243,7 +250,7 @@ def _contracts() -> tuple[ObservationContract, ActionContract]:
             dimension=14,
             joints=list(CONTROLLED_SERVO_JOINTS),
             units="rad",
-            scaling={},
+            scaling={"actionScale": action_scale} if action_scale != 1.0 else {},
             clipping={},
         ),
     )
@@ -544,7 +551,7 @@ def build_bundle(request: BundleBuildRequest) -> BuiltBundle:
     if len({archive_path for archive_path, _ in staged}) != len(staged):
         raise ValueError("duplicate archive path")
 
-    observation_contract, action_contract = _contracts()
+    observation_contract, action_contract = _contracts(request.action_scale)
     unsigned = UnsignedPolicyBundleManifest(
         schema="MICRODUCK_POLICY_BUNDLE_V1",
         bundleId="org.microduck.policy",

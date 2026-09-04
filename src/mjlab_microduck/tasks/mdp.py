@@ -4943,6 +4943,30 @@ def action_over_limit_penalty(
     return torch.sum(over, dim=-1)
 
 
+def action_limit_margin_penalty(
+    env: ManagerBasedRlEnv,
+    action_name: str = "joint_pos",
+    margin: float = 0.15,
+) -> torch.Tensor:
+    """Penalise commanded targets entering the hard-limit margin.
+
+    Unlike ``action_over_limit_penalty``, this term starts inside the mechanical
+    range.  It gives the learned policy room for servo/load transients so the
+    deployed MuJoCo runtime does not hit a hard joint stop even when the target
+    itself is technically legal.
+    """
+    if margin < 0.0:
+        raise ValueError("joint-limit margin must be non-negative")
+    term = env.action_manager.get_term(action_name)
+    target = term.raw_action * term.scale + term.offset
+    jnt_ids = term.target_ids
+    hard = env.scene["robot"].data.joint_pos_limits[:, jnt_ids]
+    lo = hard[..., 0] + margin
+    hi = hard[..., 1] - margin
+    over = (target - hi).clip(min=0.0) + (lo - target).clip(min=0.0)
+    return torch.sum(over, dim=-1)
+
+
 def forward_lean_reward(
     env: ManagerBasedRlEnv,
     command_name: str,

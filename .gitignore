@@ -1,5 +1,6 @@
 # Python-generated files
 .worktrees/
+.training_viewer/
 
 __pycache__/
 *.py[oc]

@@ -85,9 +85,13 @@ EPISODE_LENGTH_S = 12.0
 # lower bound must comfortably exceed a gentle transition (~1.5 s) plus some
 # rest, so "arrive, then hold still" is always trained.
 POSTURE_DWELL_S  = (3.5, 6.5)
-# Probability a resample commands SIT (vs STAND). 0.5 → all four combinations
-# of (reset state × command) get equal coverage, including both holds.
-SIT_PROB         = 0.5
+# Probability a resample commands SIT (vs STAND). The deployment-critical
+# STAND action starts from TRAINED_SITTING, so this first curriculum pass gives
+# the rise direction more on-policy data: with the reset mix below this yields
+# 0.75 × 0.75 = 56.25% seated→stand episodes (rather than 25% at 0.5/0.5).
+# SIT remains present for command-conditioned regression and can be restored
+# to 0.5 after a qualified stand policy exists.
+SIT_PROB         = 0.25
 
 # ── SIT keyframe (joint_pos index → angle in rad). Single fixed target. ─────
 # STABILITY-VERIFIED 2026-07-27 (sit env, scratchpad sweep_sit_pose2.py):
@@ -441,7 +445,7 @@ def make_microduck_sitstand_env_cfg(
 
     # ── Sim2real regularisers — MATCHED to velocity ─────────────────────────
     # velocity's exact set and absolute weights:
-    #   • action_rate_l2: -0.1 at stage 0, ramped -0.1 → -1.0 by iter 1500
+    #   • action_rate_l2: -0.5 at stage 0, ramped -0.5 → -1.0 by iter 500
     #   • body_ang_vel -0.05, angular_momentum -0.02
     #   • soft_landing dropped; joint_torques_l2 / neck_action_rate_l2 not added
     # Plus joint_torque_rate_l2 (anti-jitter), phased in once the transition
@@ -449,7 +453,7 @@ def make_microduck_sitstand_env_cfg(
     # per the regularizer-type lesson these smoothness terms damp jitter
     # WITHOUT blocking a slow big motion, so heavier-than-velocity would also
     # be defensible — start at parity, tighten only if the real robot shakes.
-    cfg.rewards["action_rate_l2"] = RewardTermCfg(func=mdp.action_rate_l2, weight=-0.1)
+    cfg.rewards["action_rate_l2"] = RewardTermCfg(func=mdp.action_rate_l2, weight=-0.5)
     cfg.rewards["joint_torque_rate_l2"] = RewardTermCfg(
         func=microduck_mdp.joint_torque_rate_l2, weight=0.0
     )
@@ -463,6 +467,22 @@ def make_microduck_sitstand_env_cfg(
         func=mdp.self_collision_cost,
         weight=-1.0,
         params={"sensor_name": self_collision_cfg.name},
+    )
+
+    # Penalise policy commands that drive a target beyond the hard joint range.
+    # This is deliberately policy-side (rather than an env-only action clip),
+    # so the learned ONNX behaviour carries the safety constraint into ROM
+    # deployment.  A small 0.05 rad allowance preserves the reachable sitting
+    # keyframe while discouraging boundary-riding servo targets.
+    cfg.rewards["action_over_limit"] = RewardTermCfg(
+        func=microduck_mdp.action_over_limit_penalty,
+        weight=-1.0,
+        params={"action_name": "joint_pos", "overshoot": 0.05},
+    )
+    cfg.rewards["action_limit_margin"] = RewardTermCfg(
+        func=microduck_mdp.action_limit_margin_penalty,
+        weight=-5.0,
+        params={"action_name": "joint_pos", "margin": 0.15},
     )
 
     # The deployment runtime fails a task fatally on any hard-limit contact
@@ -626,19 +646,17 @@ def make_microduck_sitstand_env_cfg(
     # Base reset: standing, just above the measured equilibrium (STAND_Z=0.115).
     cfg.events["reset_base"].params["pose_range"]["z"] = (0.11, 0.12)
 
-    # Reset-state mix: 50% standing / 50% already seated (SIT keyframe with
-    # joint/tilt noise). Combined with the independent 50/50 posture command
-    # this trains all four cases — sit-from-stand, rise-from-sit, hold-stand,
-    # hold-sit — and hands the policy both goal states' values directly (the
-    # sit env's discovery-bootstrap lesson, extended to both ends).
+    # Reset-state mix: deliberately bias toward already seated starts. Combined
+    # with SIT_PROB=0.25 this makes seated→STAND the majority transition while
+    # retaining standing starts and SIT commands for bidirectional coverage.
     cfg.events["set_ground_state"] = EventTermCfg(
         func=microduck_mdp.set_random_ground_state,
         mode="reset",
         params={
             "face_down_prob":          0.0,
             "face_up_prob":            0.0,
-            "sitting_prob":            0.5,
-            "standing_prob":           0.5,
+            "sitting_prob":            0.75,
+            "standing_prob":           0.25,
             "sitting_joint_overrides": SITTING_TARGET_OVERRIDES,
             "sitting_joint_noise_std": 0.10,           # ≈ 6° per joint
             "sitting_tilt_max":        math.radians(8),
@@ -839,12 +857,9 @@ def make_microduck_sitstand_env_cfg(
         params={
             "reward_name":   "action_rate_l2",
             "weight_stages": [
-                {"step": 0,          "weight": -0.1},
-                {"step": 500 * 24,   "weight": -0.2},
-                {"step": 750 * 24,   "weight": -0.4},
-                {"step": 1000 * 24,  "weight": -0.6},
-                {"step": 1250 * 24,  "weight": -0.8},
-                {"step": 1500 * 24,  "weight": -1.0},
+                {"step": 0,          "weight": -0.5},
+                {"step": 250 * 24,   "weight": -0.75},
+                {"step": 500 * 24,   "weight": -1.0},
             ],
         },
     )

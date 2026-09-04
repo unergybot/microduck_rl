@@ -211,6 +211,7 @@ def build_bundle(
     source_commit: str,
     checkpoint_label: str,
     experiment_ref: str,
+    action_scale: float,
     created_at: datetime,
     model: Path,
     software_license_id: str,
@@ -238,6 +239,8 @@ def build_bundle(
         checkpoint_label,
         "--experiment-ref",
         experiment_ref,
+        "--action-scale",
+        str(action_scale),
         "--created-at",
         created_at.isoformat(),
         "--software-license-id",
@@ -286,6 +289,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--candidate-release", required=True)
     parser.add_argument("--qualified-release", required=True)
     parser.add_argument("--experiment-ref", required=True)
+    parser.add_argument("--action-scale", type=float, default=1.0)
     parser.add_argument("--checkpoint-label")
     parser.add_argument("--source-commit", default=git_head())
     parser.add_argument("--created-at", default=datetime.now(UTC).isoformat())
@@ -365,6 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         source_commit=args.source_commit,
         checkpoint_label=checkpoint_label,
         experiment_ref=args.experiment_ref,
+        action_scale=args.action_scale,
         created_at=created_at,
         model=args.model,
         software_license_id=args.software_license_id,
