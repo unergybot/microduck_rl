@@ -84,3 +84,52 @@ the STAND acceptance band, while the STAND height predicate remains .09–.14 m.
 Only successfully completed physics control steps count towards reported duration;
 numerical failure can interrupt the final attempted control step. Hold counts
 exclude the 10 acquisition samples and exclude a sample that breaks the hold.
+
+## Optional browser WALK / SitStand handoff
+
+Set `browserPolicyHandoff: true` and provide `walkingPolicyPath` plus
+`walkingPolicySha256` to evaluate the website's policy switches. The walking
+policy must independently pass digest, float32 61D-input/14D-output and CPU-provider
+validation. The existing `policyPath` continues to identify SitStand. Both use
+identical physical model, HOME, action scale and observation layout. No physics
+reset occurs at a policy switch; previous-action history is cleared on the actual
+policy edge. The existing optional `resetPreviousActionOnCommandChange` remains a
+separate ablation; leave it false for browser-style policy-only history clearing.
+
+- STAND_HOLD runs WALK with zero commands.
+- STAND_TO_SIT enters SitStand immediately, supplies flag 0 until 0.8 seconds,
+  then flag 1. `sitCommandDelaySeconds` can explicitly override the 0.8-second
+  opt-in default for a separately identified ablation.
+- SIT_TO_STAND starts seated under SitStand flag 0, then switches to WALK at
+  2.0 seconds, clearing action history.
+- STAND_SIT_STAND starts on WALK, enters SitStand for the SIT phase, then uses
+  the same 2.0-second return handoff without resetting body state.
+
+The 10-second transition deadline still starts at phase entry. In handoff mode,
+settlement acquisition additionally requires the final scheduled policy and
+command: WALK after the 2-second return handoff, or SitStand with flag 1 after
+its delay. Even an early settled STAND sample cannot start the hold before WALK
+is selected. Ten qualifying samples then start a full 30-second continuous hold
+under the final policy. Default single-SitStand mode retains its pose-only gate.
+
+CSV `settled` remains the raw pose/height/tilt/speed result; `acquisitionReady`
+records the scheduling gate separately. `policyMode` and `policyChanged` identify
+each inference and actual policy edge. Phase evidence includes the final policy,
+command, acquisition condition and policy transitions with phase-relative times.
+The raw config, walking policy digest, effective behavior and deduplication identity
+are bound into report provenance and therefore into the manifest report hash.
+
+```json
+{
+  "browserPolicyHandoff": true,
+  "walkingPolicyPath": "inputs/walking.onnx",
+  "walkingPolicySha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+  "sitCommandDelaySeconds": 0.8,
+  "resetPreviousActionOnCommandChange": false
+}
+```
+
+This opt-in does not change ROM qualifications or reinterpret older experiment
+results. Report `effectiveIdentitySha256` now explicitly includes the mode flag;
+compare common CSV fields and numeric outcomes when checking baseline determinism
+across evaluator revisions, rather than comparing identity hashes alone.

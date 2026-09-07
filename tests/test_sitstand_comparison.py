@@ -116,6 +116,37 @@ def test_simulator_canonical_mapping_with_extra_free_body(tmp_path):
     sim.data.qvel[0] = float("nan")
     with pytest.raises(FloatingPointError, match="NUMERICAL"):
         sim.step(False)
+    walking_output = helper.make_tensor(
+        "value", TensorProto.FLOAT, [1, 14], [0.25] * 14
+    )
+    walking = onnx.ModelProto()
+    walking.CopyFrom(policy)
+    walking.graph.node[0].attribute[0].t.CopyFrom(walking_output)
+    walkpath = tmp_path / "walking.onnx"
+    onnx.save(walking, walkpath)
+    handoff = m.Simulator(
+        {
+            "modelPath": str(modelpath),
+            "policyPath": str(policypath),
+            "id": "handoff",
+            "browserPolicyHandoff": True,
+            "walkingPolicyPath": str(walkpath),
+            "walkingPolicySha256": m.digest(walkpath.read_bytes()),
+        }
+    )
+    handoff.reset(7, False)
+    assert handoff.active_policy == "WALK"
+    handoff.step(False)
+    assert np.allclose(handoff.previous, 0.25)
+    body = handoff.data.qpos.copy()
+    clock = handoff.data.time
+    assert handoff.select_policy("SITSTAND")
+    assert np.array_equal(handoff.data.qpos, body) and handoff.data.time == clock
+    handoff.step(True)
+    assert np.all(handoff.last_obs[34:48] == 0)
+    assert np.all(handoff.previous == 0)
+    handoff.reset(11, True)
+    assert handoff.active_policy == "SITSTAND"
     nan_output = helper.make_tensor(
         "value", TensorProto.FLOAT, [1, 14], [float("nan")] * 14
     )
@@ -376,3 +407,267 @@ def test_main_collapses_verified_aliases_and_records_fixed_revisions(
     assert report["candidates"][1]["effectiveBehavior"]["actionScale"] == 1.0
     with pytest.raises(ValueError, match="full fixed"):
         m.code_revisions({"codeRevisions": {"rl": "a" * 40, "runtime": "branch-main"}})
+
+
+def test_browser_handoff_command_schedule_and_identity():
+    m = module()
+    m.load_dependencies()
+    cfg = {
+        "browserPolicyHandoff": True,
+        "walkingPolicyPath": "walk.onnx",
+        "walkingPolicySha256": "sha256:" + "d" * 64,
+        "policySha256": "sha256:" + "a" * 64,
+        "modelSha256": "sha256:" + "b" * 64,
+    }
+    behavior = m.effective_behavior(cfg)
+    assert behavior["browserPolicyHandoff"] is True
+    assert behavior["sitCommandDelaySeconds"] == 0.8
+    assert m.policy_command(behavior, "STAND_HOLD", 0, 0.02) == ("WALK", False)
+    assert m.policy_command(behavior, "STAND_TO_SIT", 0, 0.78) == ("SITSTAND", False)
+    assert m.policy_command(behavior, "STAND_TO_SIT", 0, 0.8) == ("SITSTAND", True)
+    assert m.policy_command(behavior, "SIT_TO_STAND", 0, 1.98) == ("SITSTAND", False)
+    assert m.policy_command(behavior, "SIT_TO_STAND", 0, 2.0) == ("WALK", False)
+    assert m.policy_command(behavior, "STAND_SIT_STAND", 0, 2.0) == ("WALK", False)
+    assert m.policy_command(behavior, "STAND_SIT_STAND", 1, 0.02) == ("SITSTAND", False)
+    assert m.policy_command(behavior, "STAND_SIT_STAND", 2, 2.0) == ("WALK", False)
+    closure = "sha256:" + "c" * 64
+    identity = m.candidate_identity(cfg, closure)
+    assert identity != m.candidate_identity(
+        {**cfg, "browserPolicyHandoff": False}, closure
+    )
+    assert identity != m.candidate_identity(
+        {**cfg, "walkingPolicySha256": "sha256:" + "e" * 64}, closure
+    )
+    with pytest.raises(ValueError, match="walkingPolicy"):
+        m.effective_behavior({"browserPolicyHandoff": True})
+    with pytest.raises(TypeError, match="boolean"):
+        m.effective_behavior({"browserPolicyHandoff": "true"})
+    baseline = m.effective_behavior({})
+    assert baseline["sitCommandDelaySeconds"] == 0
+    assert m.policy_command(baseline, "STAND_HOLD", 0, 2.0) == ("SITSTAND", False)
+    assert m.policy_command(baseline, "SIT_TO_STAND", 0, 2.0) == ("SITSTAND", False)
+
+
+def test_browser_handoff_csv_tracks_policy_edges_without_body_resets(tmp_path):
+    m = module()
+    m.load_dependencies()
+    import csv
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    class Sim:
+        def __init__(self):
+            self.cfg = {
+                "id": "handoff",
+                "browserPolicyHandoff": True,
+                "sitCommandDelaySeconds": 0.8,
+            }
+            self.data = SimpleNamespace(qpos=np.zeros(14), qvel=np.zeros(14))
+            self.qids = self.vids = np.arange(14)
+            self.previous = np.zeros(14)
+            self.last_obs = np.zeros(61)
+            self.active_policy = "WALK"
+            self.resets = 0
+            self.last_sit = False
+
+        def reset(self, *args):
+            self.resets += 1
+
+        def select_policy(self, policy):
+            changed = self.active_policy != policy
+            if changed:
+                self.previous[:] = 0
+                self.active_policy = policy
+            return changed
+
+        def step(self, sitting):
+            self.last_sit = sitting
+            self.last_obs[34:48] = self.previous
+            self.previous[:] = 1
+            self.data.qpos += 0.001
+            return False, 0
+
+        def measure(self, sitting):
+            return {
+                "maxPoseErrorRad": 0.0,
+                "poseRmseRad": 0.0,
+                "heightDeviationM": 0.0,
+                "heightM": 0.06 if sitting else 0.115,
+                "maxTiltRad": 0.0,
+                "maxJointSpeedRadps": 0.0,
+                "settled": sitting == self.last_sit,
+                "fall": False,
+            }
+
+    sim = Sim()
+    case = m.evaluate(sim, "STAND_SIT_STAND", 7, tmp_path, False)
+    rows = list(csv.DictReader((tmp_path / (case["csvArtifactId"] + ".csv")).open()))
+    assert sim.resets == 1 and case["status"] == "PASSED"
+    edges = [r for r in rows if r["policyChanged"] == "1"]
+    assert [(r["phase"], r["policyMode"]) for r in edges] == [
+        ("1", "SITSTAND"),
+        ("2", "WALK"),
+    ]
+    assert all(float(r["observation34"]) == 0 for r in edges)
+    assert float(rows[-1]["jointPosition0"]) > 4.5
+    phase2 = [r for r in rows if r["phase"] == "2"]
+    assert [r["policyMode"] for r in phase2[:99]] == ["SITSTAND"] * 99
+    assert phase2[99]["policyMode"] == "WALK"
+    assert case["phases"][2]["transitionSeconds"] == pytest.approx(2.18)
+    assert all(
+        r["acquisitionReady"] == "0" and r["settled"] == "True" for r in phase2[:99]
+    )
+    assert phase2[99]["acquisitionReady"] == "1"
+    assert case["phases"][2]["durationSeconds"] == pytest.approx(32.18)
+    assert (
+        case["phases"][2]["acquisitionCondition"]
+        == "FINAL_POLICY_AND_COMMAND_PLUS_POSE"
+    )
+    assert case["phases"][1]["policyTransitions"][0]["toPolicy"] == "SITSTAND"
+    assert case["phases"][2]["policyTransitions"][0]["atPhaseSeconds"] == pytest.approx(
+        2.0
+    )
+    assert all(p["holdSteps"] == 1500 for p in case["phases"])
+
+
+def test_optional_walking_policy_is_hash_bound_cpu_and_shape_checked(tmp_path):
+    m = module()
+    m.load_dependencies()
+    import onnx
+    from onnx import TensorProto, helper
+
+    def write_policy(inputs=61, outputs=14):
+        value = helper.make_tensor(
+            "value", TensorProto.FLOAT, [1, outputs], [0.25] * outputs
+        )
+        graph = helper.make_graph(
+            [helper.make_node("Constant", [], ["action"], value=value)],
+            "walk",
+            [helper.make_tensor_value_info("obs", TensorProto.FLOAT, [1, inputs])],
+            [helper.make_tensor_value_info("action", TensorProto.FLOAT, [1, outputs])],
+        )
+        path = tmp_path / "walk.onnx"
+        onnx.save(
+            helper.make_model(
+                graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=10
+            ),
+            path,
+        )
+        return path, m.digest(path.read_bytes())
+
+    path, sha = write_policy()
+    session, name, _metadata = m.load_policy_session(path, sha)
+    assert session.get_providers() == ["CPUExecutionProvider"] and name == "obs"
+    with pytest.raises(ValueError, match="digest mismatch"):
+        m.load_policy_session(path, "sha256:" + "0" * 64)
+    for inputs, outputs in [(60, 14), (61, 13)]:
+        path, sha = write_policy(inputs, outputs)
+        with pytest.raises(ValueError, match="61D input and 14D output"):
+            m.load_policy_session(path, sha)
+
+
+def test_policy_swap_clears_only_action_history_and_retains_physics():
+    m = module()
+    m.load_dependencies()
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    sim = m.Simulator.__new__(m.Simulator)
+    sit, walk = object(), object()
+    sim.sessions = {"SITSTAND": (sit, "sit_obs"), "WALK": (walk, "walk_obs")}
+    sim.active_policy = "SITSTAND"
+    sim.session = sit
+    sim.input_name = "sit_obs"
+    sim.previous = np.ones(14)
+    sim.data = SimpleNamespace(qpos=np.arange(21), qvel=np.arange(20), time=17.3)
+    body_before = sim.data.qpos.copy()
+    assert sim.select_policy("WALK") is True
+    assert sim.session is walk and sim.input_name == "walk_obs"
+    assert np.all(sim.previous == 0)
+    assert np.array_equal(sim.data.qpos, body_before) and sim.data.time == 17.3
+    sim.previous[:] = 2
+    assert sim.select_policy("WALK") is False
+    assert np.all(sim.previous == 2)
+
+
+def test_main_binds_walking_identity_and_keeps_handoff_separate(tmp_path, monkeypatch):
+    m = module()
+    m.load_dependencies()
+    import sys
+    from types import SimpleNamespace
+
+    model = tmp_path / "scene.xml"
+    model.write_text("<mujoco/>")
+    policy = tmp_path / "sit.onnx"
+    policy.write_bytes(b"sit")
+    walk = tmp_path / "walk.onnx"
+    walk.write_bytes(b"walk")
+    candidate = {
+        "id": "baseline",
+        "label": "Baseline",
+        "policyPath": "sit.onnx",
+        "policySha256": m.digest(policy.read_bytes()),
+        "modelPath": "scene.xml",
+        "modelSha256": m.digest(model.read_bytes()),
+        "modelClosure": [{"path": "scene.xml", "sha256": m.digest(model.read_bytes())}],
+    }
+    handoff = {
+        **candidate,
+        "id": "browser",
+        "browserPolicyHandoff": True,
+        "walkingPolicyPath": "walk.onnx",
+        "walkingPolicySha256": m.digest(walk.read_bytes()),
+    }
+    config = {
+        "experimentId": "bound-handoff",
+        "codeRevisions": {"rl": "a" * 40, "runtime": "b" * 40},
+        "candidates": [candidate, handoff, {**handoff, "id": "alias"}],
+    }
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    monkeypatch.setattr(
+        m,
+        "Simulator",
+        lambda c: SimpleNamespace(
+            cfg=c, metadata={}, walking_metadata={"fixture": "walk"}
+        ),
+    )
+    monkeypatch.setattr(
+        m,
+        "evaluate",
+        lambda sim, scenario, seed, *args: {
+            "id": f"{sim.cfg['id']}-{scenario}-{seed}",
+            "candidateId": sim.cfg["id"],
+            "scenario": scenario,
+            "seed": seed,
+            "status": "FAILED",
+            "reason": "fixture",
+            "metrics": {},
+            "videoArtifactId": None,
+            "csvArtifactId": None,
+        },
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["evaluate", "--config", str(path), "--output-root", str(tmp_path / "out")],
+    )
+    m.main()
+    directory = tmp_path / "out/bound-handoff"
+    report = json.loads((directory / "report.json").read_text())
+    assert len(report["candidates"]) == 2
+    entry = report["candidates"][1]
+    assert entry["walkingPolicySha256"] == handoff["walkingPolicySha256"]
+    assert entry["effectiveBehavior"]["browserPolicyHandoff"] is True
+    assert (
+        entry["effectiveBehavior"]["walkingPolicySha256"]
+        == handoff["walkingPolicySha256"]
+    )
+    assert entry["aliases"][0]["id"] == "alias"
+    assert report["provenance"]["config"]["candidates"][1] == handoff
+    manifest = json.loads((directory / "manifest.json").read_text())
+    assert next(
+        a["sha256"] for a in manifest["artifacts"] if a["id"] == "report"
+    ) == m.digest((directory / "report.json").read_bytes())

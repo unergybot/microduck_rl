@@ -183,11 +183,31 @@ def effective_behavior(candidate):
     sit = np.asarray(candidate.get("sitPose", sit), dtype=np.float32)
     if sit.shape != (14,) or not np.isfinite(sit).all():
         raise ValueError("sitPose must contain 14 finite angles")
-    result = {"homePose": home.tolist(), "sitPose": sit.tolist()}
+    handoff = candidate.get("browserPolicyHandoff", False)
+    if not isinstance(handoff, bool):
+        raise TypeError("browserPolicyHandoff must be boolean")
+    result = {
+        "homePose": home.tolist(),
+        "sitPose": sit.tolist(),
+        "browserPolicyHandoff": handoff,
+    }
+    if handoff:
+        if (
+            not isinstance(candidate.get("walkingPolicyPath"), str)
+            or not candidate["walkingPolicyPath"]
+        ):
+            raise ValueError("browserPolicyHandoff requires walkingPolicyPath")
+        if not isinstance(
+            candidate.get("walkingPolicySha256"), str
+        ) or not re.fullmatch(r"sha256:[0-9a-f]{64}", candidate["walkingPolicySha256"]):
+            raise ValueError("browserPolicyHandoff requires walkingPolicySha256")
+        result["walkingPolicySha256"] = candidate["walkingPolicySha256"]
+        result["walkingPolicyReturnDelaySeconds"] = 2.0
+        result["holdAcquisition"] = "FINAL_POLICY_AND_COMMAND_PLUS_POSE"
     for key, default in (
         ("actionScale", 0.9),
         ("sitHeightM", 0.060),
-        ("sitCommandDelaySeconds", 0.0),
+        ("sitCommandDelaySeconds", 0.8 if handoff else 0.0),
     ):
         value = candidate.get(key, default)
         if (
@@ -227,6 +247,46 @@ def code_revisions(config):
         ):
             raise ValueError("codeRevisions requires full fixed rl and runtime commits")
     return dict(revisions)
+
+
+def load_policy_session(path, expected_digest=None):
+    if expected_digest is not None:
+        verify_digest(Path(path), expected_digest)
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 1
+    options.inter_op_num_threads = 1
+    session = ort.InferenceSession(
+        str(path), sess_options=options, providers=["CPUExecutionProvider"]
+    )
+    ins, outs = session.get_inputs(), session.get_outputs()
+    if (
+        len(ins) != 1
+        or len(outs) != 1
+        or not ins[0].shape
+        or not outs[0].shape
+        or ins[0].shape[-1] != 61
+        or outs[0].shape[-1] != 14
+        or ins[0].type != "tensor(float)"
+        or outs[0].type != "tensor(float)"
+    ):
+        raise ValueError("ONNX requires one float32 61D input and 14D output")
+    return session, ins[0].name, session.get_modelmeta().custom_metadata_map
+
+
+def policy_command(cfg, scenario, phase, seconds):
+    sitting = scenario == "STAND_TO_SIT" or (
+        scenario == "STAND_SIT_STAND" and phase == 1
+    )
+    handoff = cfg.get("browserPolicyHandoff", False)
+    command_sit = sitting and seconds >= cfg.get(
+        "sitCommandDelaySeconds", 0.8 if handoff else 0.0
+    )
+    if not handoff or sitting:
+        return "SITSTAND", command_sit
+    returning = scenario == "SIT_TO_STAND" or (
+        scenario == "STAND_SIT_STAND" and phase == 2
+    )
+    return ("SITSTAND" if returning and seconds < 2.0 else "WALK"), False
 
 
 class Simulator:
@@ -275,25 +335,24 @@ class Simulator:
         self.gyroadr = int(self.model.sensor_adr[self.gyro])
         self.home = np.asarray(self.cfg["homePose"], dtype=np.float32)
         self.sit = np.asarray(self.cfg["sitPose"], dtype=np.float32)
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = 1
-        options.inter_op_num_threads = 1
-        self.session = ort.InferenceSession(
-            candidate["policyPath"],
-            sess_options=options,
-            providers=["CPUExecutionProvider"],
+        self.session, self.input_name, self.metadata = load_policy_session(
+            candidate["policyPath"]
         )
-        ins, outs = self.session.get_inputs(), self.session.get_outputs()
-        if (
-            len(ins) != 1
-            or len(outs) != 1
-            or ins[0].shape[-1] != 61
-            or outs[0].shape[-1] != 14
-            or ins[0].type != "tensor(float)"
-        ):
-            raise ValueError("ONNX requires one float32 61D input and 14D output")
-        self.input_name = ins[0].name
-        self.metadata = self.session.get_modelmeta().custom_metadata_map
+        self.sessions = {"SITSTAND": (self.session, self.input_name)}
+        self.active_policy = "SITSTAND"
+        if self.cfg["browserPolicyHandoff"]:
+            walking, name, self.walking_metadata = load_policy_session(
+                candidate["walkingPolicyPath"], candidate["walkingPolicySha256"]
+            )
+            self.sessions["WALK"] = (walking, name)
+
+    def select_policy(self, policy):
+        if policy == self.active_policy:
+            return False
+        self.session, self.input_name = self.sessions[policy]
+        self.active_policy = policy
+        self.previous[:] = 0
+        return True
 
     def reset(self, seed, sitting):
         mujoco.mj_resetData(self.model, self.data)
@@ -305,6 +364,9 @@ class Simulator:
             self.data.qpos[self.free + 2] = self.cfg.get("sitHeightM", 0.060)
         self.data.ctrl[self.aids] = self.data.qpos[self.qids]
         self.previous = np.zeros(14, dtype=np.float32)
+        self.select_policy(
+            "SITSTAND" if sitting or not self.cfg["browserPolicyHandoff"] else "WALK"
+        )
         mujoco.mj_forward(self.model, self.data)
 
     def step(self, sitting):
@@ -518,6 +580,9 @@ def evaluate(sim, scenario, seed, staging, record):
                 "timeSeconds",
                 "phase",
                 "commandSit",
+                "policyMode",
+                "policyChanged",
+                "acquisitionReady",
                 "maxPoseErrorRad",
                 "heightM",
                 "poseRmseRad",
@@ -551,15 +616,46 @@ def evaluate(sim, scenario, seed, staging, record):
                     "durationSeconds": 0.0,
                     "transitionSeconds": 0.0,
                     "transitionCompleted": False,
+                    "policyTransitions": [],
+                    "policyModes": [],
+                    "acquisitionCondition": "FINAL_POLICY_AND_COMMAND_PLUS_POSE"
+                    if sim.cfg.get("browserPolicyHandoff", False)
+                    else "POSE_ONLY",
+                    "finalPolicy": "SITSTAND"
+                    if sitting or not sim.cfg.get("browserPolicyHandoff", False)
+                    else "WALK",
+                    "finalCommandSit": sitting,
                     "maxPoseRmseRad": 0.0,
                     "maxHeightDeviationM": 0.0,
                 }
                 window = StrictWindow()
                 for step in range(2001):
                     local = (step + 1) * DT
-                    command_sit = sitting and local >= sim.cfg.get(
-                        "sitCommandDelaySeconds", 0.0
+                    policy, command_sit = policy_command(
+                        sim.cfg, scenario, phase, local
                     )
+                    acquisition_ready = not sim.cfg.get(
+                        "browserPolicyHandoff", False
+                    ) or (
+                        policy == phase_result["finalPolicy"] and command_sit == sitting
+                    )
+                    previous_policy = getattr(sim, "active_policy", "SITSTAND")
+                    policy_changed = (
+                        sim.select_policy(policy)
+                        if sim.cfg.get("browserPolicyHandoff", False)
+                        else False
+                    )
+                    if policy not in phase_result["policyModes"]:
+                        phase_result["policyModes"].append(policy)
+                    if policy_changed:
+                        phase_result["policyTransitions"].append(
+                            {
+                                "atPhaseSeconds": local,
+                                "fromPolicy": previous_policy,
+                                "toPolicy": policy,
+                                "previousActionCleared": True,
+                            }
+                        )
                     if (
                         sim.cfg.get("resetPreviousActionOnCommandChange", False)
                         and command_sit != last_command_sit
@@ -610,6 +706,9 @@ def evaluate(sim, scenario, seed, staging, record):
                             timeSeconds=(elapsed + 1) * DT,
                             phase=phase,
                             commandSit=int(command_sit),
+                            policyMode=policy,
+                            policyChanged=int(policy_changed),
+                            acquisitionReady=int(acquisition_ready),
                             **measured,
                             **trace,
                             actuatorClampSteps=int(clamps),
@@ -628,7 +727,9 @@ def evaluate(sim, scenario, seed, staging, record):
                         break
                     if window.settled_at is not None and measured["settled"]:
                         phase_result["holdSteps"] += 1
-                    outcome = window.step(local, measured["settled"])
+                    outcome = window.step(
+                        local, measured["settled"] and acquisition_ready
+                    )
                     if outcome:
                         reason = outcome
                         break
@@ -800,6 +901,16 @@ def main():
                     json.dumps(closure, sort_keys=True, separators=(",", ":")).encode()
                 )
                 entry["effectiveBehavior"] = effective_behavior(c)
+                if c.get("browserPolicyHandoff", False):
+                    c["walkingPolicyPath"] = str(
+                        (
+                            args.config.resolve().parent / c["walkingPolicyPath"]
+                        ).resolve()
+                    )
+                    verify_digest(
+                        Path(c["walkingPolicyPath"]), c["walkingPolicySha256"]
+                    )
+                    entry["walkingPolicySha256"] = c["walkingPolicySha256"]
                 identity = candidate_identity(c, entry["modelClosureSha256"])
                 entry["effectiveIdentitySha256"] = identity
                 if identity in seen_identities:
@@ -808,6 +919,8 @@ def main():
                     continue
                 sim = Simulator(c)
                 entry["onnxMetadata"] = sim.metadata
+                if c.get("browserPolicyHandoff", False):
+                    entry["walkingOnnxMetadata"] = sim.walking_metadata
                 entry["experimentalOnly"] = True
                 seen_identities[identity] = entry
             except Exception as error:  # noqa: BLE001 - preserve each invalid candidate as UNAVAILABLE
