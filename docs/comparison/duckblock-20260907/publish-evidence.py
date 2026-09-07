@@ -62,7 +62,7 @@ def main():
             raise ValueError('parity sample integrity failure')
         if walking_hashes:
             walking = json.loads((stage / 'walking-parity.json').read_text())
-            if not walking['passed'] or walking_hashes != {walking['policySha256']}:
+            if not walking['passed'] or not walking_hashes.issubset({walking['policySha256'], parity['policySha256']}):
                 raise ValueError('walking parity policy identity mismatch')
             if sha(stage / 'walking-parity-samples.json') != walking['sampleSha256']:
                 raise ValueError('walking parity sample integrity failure')

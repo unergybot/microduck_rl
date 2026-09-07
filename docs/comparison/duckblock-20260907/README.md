@@ -139,3 +139,35 @@ scenario andseed; comparison videos play independently and reports/CSV remain
 available when no video exists. This work grants no runtimeSIT permission and
 starts no training or physicalrobot execution. Deployment and authenticated
 browser acceptance are tracked in platform PR https://github.com/unergybot/unergy-platform/pull/674.
+
+## One-factor Walking-weight control
+
+`duckblock-walk-ablation-20260907-v1` closes the acquisition-timing confound above.
+Both candidates use the exact same handoff, action-history reset, final-policy
+acquisition gate and deadlines. Only the policy assigned to theWALK slot differs:
+SitStand itself versus the websiteWalking ONNX. `one-factor-proof.json` binds
+that single effective-configuration difference.
+
+| WALK-slot weights under identical protocol | Stand /8 | Stand→sit /8 | Sit→stand /8 | Continuous /8 |
+|---|---:|---:|---:|---:|
+| SitStand self-handoff control | 8 | 0 | 8 | 0 |
+| WebsiteWalking | 8 | 0 | 8 | 0 |
+
+No pass-rate benefit from Walking weights is demonstrated by this battery.
+The earlier seed11 baseline acquired at.76s and rejected a hold break at.80s,
+before the2s switch. Under identical handoff/acquisition rules, the self-control
+acquires at2.18s and Walking at2.30s; both then hold1500steps/30s. The earlier
+7/8→8/8 comparison therefore cannot be presented as proof of improved physical
+stability fromWalking weights. The exact phase evidence is in`seed11-phases.json`.
+
+The Walking treatment repeats all32 prior cases,45,248CSV rows and5,384,512shared
+cells exactly. All64newcases completed, with zero falls or missing requested
+videos. All73original artifacts satisfy the10MiB limit and have valid hashes;
+43production containers remained unchanged across60guard checks. The enriched
+third publication is under the same training-root policy_comparisons directory.
+
+Final recommendation: preserve the current runtime qualification boundary; resolve
+the SIT target-versus-learned-posture mismatch and investigate the fork scene's
+2ms stand-up sensitivity before qualifying SIT. If the specified target posture
+is mandatory, a training objective change may be needed. The evidence does not
+justify replacing weights merely to improve the reported acceptance count.
