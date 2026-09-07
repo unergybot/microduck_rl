@@ -90,3 +90,28 @@ errors from the final 50 CSV samples. `compare-repeat.py` compares first-run
 metrics, and every old CSV column. The three handoff-only CSV columns are excluded
 from that exact comparison. Original result: 32/32 cases and 4,996,468 shared CSV
 cells matched exactly.
+
+The final one-factor run uses `input/walk-ablation.json`, experiment
+`duckblock-walk-ablation-20260907-v1`, and the same frozen `6fc54a0` source/image.
+Both `self-handoff` and `walking-handoff` enable the identical browser handoff,
+history reset and final-policy acquisition rules. Only the policy bound to the
+WALK slot differs: SitStand (`c6c40e35...`) versus Walking (`e36332d3...`). The
+captured launcher is `guarded-run-original-walk-ablation.py`; the reusable command
+above needs only `--config input/walk-ablation.json` (or a fresh-ID copy).
+
+`compare-treatment-repeat.py` applies the same exact comparison to the prior
+`browser-handoff` and final `walking-handoff` candidates:
+
+```sh
+python3 compare-treatment-repeat.py \
+  /path/to/output/duckblock-handoff-20260907-v1 \
+  /path/to/output/duckblock-walk-ablation-20260907-v1 \
+  > treatment-determinism.json
+```
+
+The one-factor run passed 8/8 STAND and 8/8 SIT_TO_STAND for both policies;
+STAND_TO_SIT and the continuous sequence passed 0/8 for both. Seed 11 acquired
+STAND at 2.18 s for self-handoff and 2.30 s for Walking, after the same 2.00 s
+policy-slot switch, and each held 30 s. Treatment reproduction matched all 32
+cases, numeric metrics and 5,384,512 CSV cells exactly. These results do not
+attribute the earlier pre-2-second hold rejection to Walking weights.
