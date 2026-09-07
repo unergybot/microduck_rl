@@ -98,3 +98,44 @@ no production credentials/state mounts or ports are required. Completed evidence
 is separately enriched with browser/source/execution records and atomically
 published under the training root's policy_comparisons directory; original
 producer output remains immutable.
+
+## Controlled policy-handoff ablation
+
+The second immutable experiment is`duckblock-handoff-20260907-v1`, evaluator
+`6fc54a0af89287e8859fb9d4b9b7da4f05d99011`, config`handoff.json`.
+Both conditions retain the same flat model,scale1,HOME,seed perturbation and.8s
+SIT delay. The only treatment is the website's policy-handoff protocol, including
+its previous-action reset at actual policy edges and2s SitStand-zero beforeWALK.
+Acquisition must wait for the final scheduled policy/command; the10s deadline
+still begins atphaseentry and each successful phase holds30s under the finalpolicy.
+
+| Condition | Stand /8 | Stand→sit /8 | Sit→stand /8 | Continuous /8 |
+|---|---:|---:|---:|---:|
+| Same SitStand, retained action history | 8 | 0 | 7 | 0 |
+| Website WALK/SitStand handoff | 8 | 0 | 8 | 0 |
+
+The handoff removes the observed seed11 stand-up hold break but leaves the SIT
+pose failure unchanged. No falls occurred in this ablation. This is evidence for
+the limited role of the switch protocol, not authorization to enable runtimeSIT.
+`baseline-determinism.json` verifies all32 repeated baseline cases,43,073CSV rows
+and4,996,468 shared cells match exactly, including every numeric metric.
+
+The Walking policy is also fixed (`e36332d383997d51401897734cd3e79cf5038406feddb18b4d57ecfb141daa6c`).
+A separate100-sample browser-WASM/Python test passed with maximumabsoluteerror
+1.4901161193847656e-7; inputs and outputs are in`walking-parity-samples.json`.
+The report binds both policy identities and the frontend displays the additional
+Walking SHA whenpresent.
+
+Both completed enriched publications are at
+`/home/mcao/MyCode/microduck_rl/policy_comparisons/<experimentId>/`.
+`publish-evidence.py` validates original artifact hashes and browser policy/sample
+binding, checks the production guard, preserves the original report/manifest,
+then uses the evaluator's atomic publisher. It rejects an existing experimentID.
+The original baseline publisher bytes are retained at commitdbb96da; the later
+version adds the optionalWalking parity evidence for the secondexperiment.
+
+ROM entry: trainingmonitor → 实验回放 → 策略对照. Choose anexperiment, candidate,
+scenario andseed; comparison videos play independently and reports/CSV remain
+available when no video exists. This work grants no runtimeSIT permission and
+starts no training or physicalrobot execution. Deployment and authenticated
+browser acceptance are tracked in platform PR https://github.com/unergybot/unergy-platform/pull/674.

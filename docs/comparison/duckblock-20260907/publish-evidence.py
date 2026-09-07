@@ -49,6 +49,10 @@ def main():
             'browser-model-comparison.json': args.workspace / 'browser/model-comparison.json',
             'browser-reference.mp4': args.workspace / 'media/browser-reference.mp4',
         }
+        walking_hashes = {c['walkingPolicySha256'] for c in report['candidates'] if c.get('walkingPolicySha256')}
+        if walking_hashes:
+            mappings['walking-parity.json'] = args.workspace / 'browser/walking-parity.json'
+            mappings['walking-parity-samples.json'] = args.workspace / 'browser/walking-parity-samples.json'
         for name, source in mappings.items():
             shutil.copy2(source, stage / name)
         parity = json.loads((stage / 'browser-parity.json').read_text())
@@ -56,6 +60,13 @@ def main():
             raise ValueError('browser parity is not bound to all SitStand identities')
         if sha(stage / 'browser-parity-samples.json') != parity['sampleSha256']:
             raise ValueError('parity sample integrity failure')
+        if walking_hashes:
+            walking = json.loads((stage / 'walking-parity.json').read_text())
+            if not walking['passed'] or walking_hashes != {walking['policySha256']}:
+                raise ValueError('walking parity policy identity mismatch')
+            if sha(stage / 'walking-parity-samples.json') != walking['sampleSha256']:
+                raise ValueError('walking parity sample integrity failure')
+            report['checks'].append({'name': 'WALKING_WASM_PYTHON_PARITY', 'status': 'PASSED', 'reason': f"{walking['samples']} identical61D inputs, atol1e-5/rtol1e-4; max absolute action error {walking['maxAbsoluteError']}"})
         evidence = {f.stem: json.loads(f.read_text()) for f in args.run_evidence.glob('*.json')}
         before, after = evidence['production-before'], evidence['production-after']
         if before != after or not evidence['production-guard-result']['unchanged']:
