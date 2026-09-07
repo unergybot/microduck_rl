@@ -1,0 +1,24 @@
+{
+  "experimentId": "sitstand-example-001",
+  "title": "Fixed-fork offline SitStand diagnostics",
+  "candidates": [{
+    "id": "fork",
+    "label": "Fork model and runtime parameters",
+    "policyPath": "inputs/sitstand.onnx",
+    "policySha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+    "modelPath": "inputs/model/scene.xml",
+    "modelSha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+    "modelClosure": [
+      {"path": "scene.xml", "sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX"},
+      {"path": "robot.xml", "sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX"},
+      {"path": "assets/trunk.stl", "sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX"}
+    ],
+    "source": "Record source URL/repository/revision and capture date here",
+    "normalizationEvidence": "UNKNOWN: external artifact, metadata not independently verified",
+    "licenseStatus": "UNKNOWN: record artifact license evidence",
+    "actionScale": 0.9,
+    "sitHeightM": 0.060,
+    "sitCommandDelaySeconds": 0.0,
+    "resetPreviousActionOnCommandChange": false
+  }]
+}
