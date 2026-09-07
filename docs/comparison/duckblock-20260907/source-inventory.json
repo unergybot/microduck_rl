@@ -1,0 +1,289 @@
+{
+  "source": "https://jecoprojects.com/duckblock/",
+  "retrievedAt": "2026-09-07",
+  "runtimeRevision": "590b986bd8c0d50ae02cb3ea2f59c463b6828168",
+  "rlRevision": "9a03de6c63f80f762144ab00f7b614ef401ab280",
+  "licenseStatus": "Both fixed fork repository LICENSE files are Apache-2.0. External ONNX metadata run_path=None; original training lineage and separately applicable model/site licensing have not been independently verified. Experimental diagnostic identity only.",
+  "files": [
+    {
+      "path": "source/assets/ankle_left.stl",
+      "sha256": "sha256:df5d7f04d63390a1e263e0138ee94e1aec2ff2b55cf63729f4ec461b25c1c1f0",
+      "sizeBytes": 58284
+    },
+    {
+      "path": "source/assets/ankle_right.stl",
+      "sha256": "sha256:48b8551a13d22cc8752ddf3148796b357a6cbd6e2ecbd93c3ecdfbf55e533e72",
+      "sizeBytes": 51584
+    },
+    {
+      "path": "source/assets/banana_pcb_locker.stl",
+      "sha256": "sha256:2e51f6e23e4dbea660a9dbadcd763bbc77d48a7e3e0a58f047eab45554e07b55",
+      "sizeBytes": 11634
+    },
+    {
+      "path": "source/assets/bearing_roll.stl",
+      "sha256": "sha256:fa0da0a5eef428a41da6e9639f75120781594e600c5db7518621750221669849",
+      "sizeBytes": 30284
+    },
+    {
+      "path": "source/assets/bottom_head_shell.stl",
+      "sha256": "sha256:331a361406e77c05256e5064197f785ac1e9c8f091079a3519c2e33f28ae5ebc",
+      "sizeBytes": 231334
+    },
+    {
+      "path": "source/assets/elec_rpi_robot_hat_pcb.stl",
+      "sha256": "sha256:acc66b75f2ff26f42339577c38c6f348ec73c4fbb52912637ba5244eb1a78ebb",
+      "sizeBytes": 225434
+    },
+    {
+      "path": "source/assets/face_part.stl",
+      "sha256": "sha256:47ad1137a68bf72b2c93f1bf4836f18fb9a8d21a4f8f86fbe761b9871233fcce",
+      "sizeBytes": 136784
+    },
+    {
+      "path": "source/assets/foot_left.stl",
+      "sha256": "sha256:b7749b1f4fd9e7faf8180772d7ce8254139c60bc43aee463ec76afc86212d59c",
+      "sizeBytes": 241934
+    },
+    {
+      "path": "source/assets/foot_right.stl",
+      "sha256": "sha256:e2aba02ec1b949bc8a5a77ad3d0af9009dee80c100aa4bbfcf336f1fa5ef206f",
+      "sizeBytes": 246084
+    },
+    {
+      "path": "source/assets/hip_l.stl",
+      "sha256": "sha256:dbdf6e7f5587385c0f6a77b407931b30e81c9a212dac7c52b4e0884156049056",
+      "sizeBytes": 229134
+    },
+    {
+      "path": "source/assets/jaw.stl",
+      "sha256": "sha256:90afa64e47ef237f0f58d6f4830dc3cd6215328ed8a639b1e1a9eb2157307f4a",
+      "sizeBytes": 120834
+    },
+    {
+      "path": "source/assets/jaw_soft.stl",
+      "sha256": "sha256:6c3ebb578ea5e6d7b995baca9b42ef7c9f9858b56dedf6f0d949f5e6ea9d3ef2",
+      "sizeBytes": 84084
+    },
+    {
+      "path": "source/assets/left_shell.stl",
+      "sha256": "sha256:c31e71e2e55c5daccfef738c80053104ba2fb3589a0836ab1b6ebb5c380a05ae",
+      "sizeBytes": 256334
+    },
+    {
+      "path": "source/assets/leg.stl",
+      "sha256": "sha256:bfbc6ae5faefc56bd65d860cf3410a08e8286717063584f15b56bbd5302b20f8",
+      "sizeBytes": 166434
+    },
+    {
+      "path": "source/assets/lens.stl",
+      "sha256": "sha256:b9b86fce70198040781a739e2c15d2996b549b25d73b7544005ae08a415b486e",
+      "sizeBytes": 23484
+    },
+    {
+      "path": "source/assets/m12_lens_holder.stl",
+      "sha256": "sha256:d96825a096d5d3d5d252086cf0cdb3f5bc22d9f0baef0a3f97a85bae1617be99",
+      "sizeBytes": 98334
+    },
+    {
+      "path": "source/assets/motor_support.stl",
+      "sha256": "sha256:d6725004f0a85a5cf0161214ea0d39fb6f14ee3563c9a96cd5aad725b5e2a716",
+      "sizeBytes": 45284
+    },
+    {
+      "path": "source/assets/neck.stl",
+      "sha256": "sha256:3cb654ee9387d55c7d10d40fc84bb7cbf3cedb3243d1da499cf01c54d366079c",
+      "sizeBytes": 18384
+    },
+    {
+      "path": "source/assets/neck_pitch.stl",
+      "sha256": "sha256:dbd6fcbf8b8f27a8364d5bcae2b9a537d7e384325b44a653b360139b6fa1da2f",
+      "sizeBytes": 85284
+    },
+    {
+      "path": "source/assets/noenoeil.stl",
+      "sha256": "sha256:55f3167627f6fbd1a19966f92396adf2ccd55795b13ded3b9f52705ba8a7ab77",
+      "sizeBytes": 12384
+    },
+    {
+      "path": "source/assets/np_f970.stl",
+      "sha256": "sha256:01fbacc788b53ebb7648cda07090133b8c696da31d700c560f45189494977871",
+      "sizeBytes": 247734
+    },
+    {
+      "path": "source/assets/pcb__raspberry_pi_zero_2_w.stl",
+      "sha256": "sha256:43d8368ced3d623eaa5ef538e8361f5878b85931b7cd469a4488eee7aa00bd91",
+      "sizeBytes": 262184
+    },
+    {
+      "path": "source/assets/power_support.stl",
+      "sha256": "sha256:4aee9ddf8c12478d334f3d8d9e65af712072bef241283a08c895606fc2e3d9e8",
+      "sizeBytes": 128234
+    },
+    {
+      "path": "source/assets/right_shell.stl",
+      "sha256": "sha256:c346581c2e3c2c189ea49372a147dfbc0dca89db4ec02f9f230921e480e762a7",
+      "sizeBytes": 256384
+    },
+    {
+      "path": "source/assets/seeed_bearing__configuration__22x16x4.stl",
+      "sha256": "sha256:8551dc99cbdc012bd261c2a175f2cc766dd6aed0786781b35f8381cd3aa95b34",
+      "sizeBytes": 260134
+    },
+    {
+      "path": "source/assets/seeed_bearing__configuration_default.stl",
+      "sha256": "sha256:e4338e0e6c7adeb52a35e02d6fa5babe761e8752ffa0fc2e31b0ba672c18630d",
+      "sizeBytes": 260084
+    },
+    {
+      "path": "source/assets/soft_mouth_top.stl",
+      "sha256": "sha256:451f53d30350552cb6e26f777698272f7c3fa557f389adb24f94c75a201e67cd",
+      "sizeBytes": 98384
+    },
+    {
+      "path": "source/assets/sole_left.stl",
+      "sha256": "sha256:357f80bb46855e3ce50f817705acd80471dae90b4ee6b4a0a948614a7daeddb1",
+      "sizeBytes": 197384
+    },
+    {
+      "path": "source/assets/sole_right.stl",
+      "sha256": "sha256:07801107a36dbc1c2b83b3b64ad98be39ba662a8a7fa0b62a29119b201f41fe6",
+      "sizeBytes": 198684
+    },
+    {
+      "path": "source/assets/speaker.stl",
+      "sha256": "sha256:0ef54df86c6093c166d73e33dc0b8364ef5643a7a1b1dacaba577be5a9c06c32",
+      "sizeBytes": 684
+    },
+    {
+      "path": "source/assets/top_head_shell.stl",
+      "sha256": "sha256:a59823b8f2ab23d530e6b071559f7fd308851ae035b7cb4d0b7baf7edef4b3e3",
+      "sizeBytes": 194984
+    },
+    {
+      "path": "source/assets/trunk_base.stl",
+      "sha256": "sha256:4b84ebe28041e6236ecafd4a26cebe537e21c14423e6acded3d78478c7650ed7",
+      "sizeBytes": 38734
+    },
+    {
+      "path": "source/assets/upper_leg_left.stl",
+      "sha256": "sha256:a626dafcdd0074fd4e79e604d377495d304d222f1afd27b13487b7248b35a0b8",
+      "sizeBytes": 133134
+    },
+    {
+      "path": "source/assets/upper_leg_right.stl",
+      "sha256": "sha256:97fd516a4c0e593fef9e22b1521d60ca86bd91966a4328db0834bac5ba1cabdf",
+      "sizeBytes": 124434
+    },
+    {
+      "path": "source/assets/upper_leg_rigidity_plate.stl",
+      "sha256": "sha256:96e50158d44ef97fc46f5d6330b6bb02fb93116790ae892a170fdd052e696aba",
+      "sizeBytes": 45084
+    },
+    {
+      "path": "source/assets/xl330.stl",
+      "sha256": "sha256:d3c7b71750397083d3dfbad395fd8ac794763f43e2ea2b5006da5840c976fc82",
+      "sizeBytes": 45584
+    },
+    {
+      "path": "source/assets/yaw2roll.stl",
+      "sha256": "sha256:c20cbdd8a9d52f789ec5a4b0d4a173a225652c6bc4610d555ea309c7a0e0d559",
+      "sizeBytes": 119884
+    },
+    {
+      "path": "source/assets/yaw_roll_motion.stl",
+      "sha256": "sha256:ae3740fde29a261b79650a25825baedd84d538fc67b6b20b79589125e5e05592",
+      "sizeBytes": 62184
+    },
+    {
+      "path": "source/duckblock-flat.xml",
+      "sha256": "sha256:3fe2a0f6ef91f363c40ee1cf16d32fba5602b49543e1cefa7369577f575377f1",
+      "sizeBytes": 29196
+    },
+    {
+      "path": "source/duckblock-sitstand.onnx",
+      "sha256": "sha256:c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
+      "sizeBytes": 793695
+    },
+    {
+      "path": "source/duckblock-walk.onnx",
+      "sha256": "sha256:e36332d383997d51401897734cd3e79cf5038406feddb18b4d57ecfb141daa6c",
+      "sizeBytes": 793705
+    },
+    {
+      "path": "source/duckblock.xml",
+      "sha256": "sha256:7a6fdf437f5a80c7348ad801f43f906b997a834389cb70cca5e1e8517ba38044",
+      "sizeBytes": 32898
+    },
+    {
+      "path": "source/fork-policies-README.md",
+      "sha256": "sha256:8445d1082b334a0980db76aae0eaaf6d6631e015a183e4658a7c7d0718a55177",
+      "sizeBytes": 3547
+    },
+    {
+      "path": "source/fork-sitstand.onnx",
+      "sha256": "sha256:c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
+      "sizeBytes": 793695
+    },
+    {
+      "path": "source/policies/BEST_alpha_sitstand.onnx",
+      "sha256": "sha256:c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
+      "sizeBytes": 793695
+    },
+    {
+      "path": "source/policies/BEST_alpha_stand.onnx",
+      "sha256": "sha256:1569268713e40deea795dd2922dba50d3621e15a872855408b6b1b125b1c094b",
+      "sizeBytes": 793705
+    },
+    {
+      "path": "source/policies/BEST_alpha_walking.onnx",
+      "sha256": "sha256:e36332d383997d51401897734cd3e79cf5038406feddb18b4d57ecfb141daa6c",
+      "sizeBytes": 793705
+    },
+    {
+      "path": "source/policies/BEST_roller.onnx",
+      "sha256": "sha256:cf05651d2708a2f9364212e86b866c97a70ace8131c492500105e8f28bf99afd",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "source/policies/BEST_roller_crouch.onnx",
+      "sha256": "sha256:a1a084be240469c76ac9d3fa44d4792f16d4b1da60398b3ecd3cfc5e2244d990",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "source/policies/alpha_ground_pick.onnx",
+      "sha256": "sha256:ffbf5109982ff999b0ba53afe86b9ae731bbec679d67fb7f8ab4c52152c88872",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "source/policies/ball_kick_left.onnx",
+      "sha256": "sha256:d6928284dccd3dd61e08bf2f760effa74309fbefd97b2b31afb2a60f526d196a",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "source/policies/ball_kick_right.onnx",
+      "sha256": "sha256:147a32c388c6b19111b3ac3b550a9a6dc8b8bf267118af4d8c3712522eedb5af",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "source/policies/roulade.onnx",
+      "sha256": "sha256:3d60da08fc13f29c1b57f41977aa898132c0d60042100149d8e775affcbca32b",
+      "sizeBytes": 793685
+    },
+    {
+      "path": "duckblock-main.js",
+      "sha256": "sha256:b369928500fe4acdcc2e5a96e17e5b40e197fe62a53f59df52e30a260d387bc4",
+      "sizeBytes": 1753711
+    },
+    {
+      "path": "mujoco.wasm",
+      "sha256": "sha256:1e3ba4ae1f4dfb4f918314dc472b253d5a00ed61abd59a5a91f6994c882ad560",
+      "sizeBytes": 10117577
+    },
+    {
+      "path": "ort.wasm",
+      "sha256": "sha256:d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6",
+      "sizeBytes": 13479978
+    }
+  ]
+}
