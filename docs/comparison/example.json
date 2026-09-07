@@ -1,6 +1,7 @@
 {
   "experimentId": "sitstand-example-001",
   "title": "Fixed-fork offline SitStand diagnostics",
+  "codeRevisions": {"rl": "REPLACE_WITH_FULL_FIXED_RL_COMMIT", "runtime": "REPLACE_WITH_FULL_FIXED_RUNTIME_COMMIT"},
   "candidates": [{
     "id": "fork",
     "label": "Fork model and runtime parameters",

@@ -13,13 +13,22 @@ python scripts/evaluate_sitstand_comparison.py \
 ```
 
 Copy `example.json`, replace paths and every digest with independently captured
-source hashes. Paths resolve against the config directory. `modelSha256` hashes
+source hashes. Supply top-level `codeRevisions.rl` and `codeRevisions.runtime`
+as full 40-character lowercase commit hashes; branch names are rejected. They
+are captured alongside the exact evaluator file SHA256 and dependency versions.
+Paths resolve against the config directory. `modelSha256` hashes
 the root XML. `modelClosure` must list the root XML and every transitively included
 XML, mesh, and texture; each path is relative to the root XML parent. Traversal,
 symlinks, missing files and mismatched hashes cannot become evaluated evidence.
 The closure aggregate hash is SHA256 of compact sorted JSON mapping path to digest.
 Do not deduplicate candidates merely because their policy hashes match: the same
-weights on another model or action scale are distinct experiments.
+weights on another model or action scale are distinct experiments. Verified runnable
+candidates with identical policy/root/closure hashes and effective behavior are
+evaluated once; later entries remain in the canonical candidate’s `aliases`.
+`effectiveBehavior` records every actual pose, scale, delay and history setting;
+`effectiveIdentitySha256` binds these with the artifact identities. Source labels
+and local path spellings do not define behavior. Invalid source candidates remain
+explicitly UNAVAILABLE and are not hidden by deduplication.
 
 The immutable output is `<output-root>/<experimentId>`. A hidden staging directory
 is atomically renamed after writing report.json, per-case CSV/MP4 and manifest.json.
@@ -63,3 +72,15 @@ Default observation and pose ordering comes from the fork's runtime contracts.
 Explicit HOME is applied consistently to observation centering and action targets.
 Head/body commands remain zero; SIT uses twist vx=1, STAND vx=0. No action EMA.
 At most six candidates keep both cases and artifacts below consumer limits.
+
+Per-case `phases` explicitly report STAND/SIT targets, status, reason, control and
+settled sample counts, strict hold sample counts/duration, transition acquisition,
+and total duration. Later phases after an early failure are NOT_RUN. Flat numeric
+metrics repeat phase pass/hold counts for existing consumers, alongside totals
+and `maxPoseRmseRad`, `maxStandPoseRmseRad`, `maxHeightDeviationM`. RMSE measures
+against each phase's target (STAND uses HOME); STAND-only maximum excludes SIT.
+Height deviation is absolute distance from SIT target or the center (.115 m) of
+the STAND acceptance band, while the STAND height predicate remains .09–.14 m.
+Only successfully completed physics control steps count towards reported duration;
+numerical failure can interrupt the final attempted control step. Hold counts
+exclude the 10 acquisition samples and exclude a sample that breaks the hold.

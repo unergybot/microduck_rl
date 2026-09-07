@@ -173,9 +173,65 @@ def load_dependencies():
     )
 
 
+def effective_behavior(candidate):
+    """Canonicalize every configurable input that changes simulation behavior."""
+    home = np.asarray(candidate.get("homePose", DEFAULT_JOINT_POSE), dtype=np.float32)
+    if home.shape != (14,) or not np.isfinite(home).all():
+        raise ValueError("homePose must contain 14 finite angles")
+    sit = home.copy()
+    sit[[1, 2, 3, 4, 10, 11, 12, 13]] = [0, -0.4079, 1.35, 0, 0, 0.4079, -1.35, 0]
+    sit = np.asarray(candidate.get("sitPose", sit), dtype=np.float32)
+    if sit.shape != (14,) or not np.isfinite(sit).all():
+        raise ValueError("sitPose must contain 14 finite angles")
+    result = {"homePose": home.tolist(), "sitPose": sit.tolist()}
+    for key, default in (
+        ("actionScale", 0.9),
+        ("sitHeightM", 0.060),
+        ("sitCommandDelaySeconds", 0.0),
+    ):
+        value = candidate.get(key, default)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError("invalid " + key)
+        result[key] = float(value)
+    reset = candidate.get("resetPreviousActionOnCommandChange", False)
+    if not isinstance(reset, bool):
+        raise TypeError("resetPreviousActionOnCommandChange must be boolean")
+    result["resetPreviousActionOnCommandChange"] = reset
+    return result
+
+
+def candidate_identity(candidate, closure_digest):
+    identity = {
+        "policySha256": candidate["policySha256"],
+        "modelSha256": candidate["modelSha256"],
+        "modelClosureSha256": closure_digest,
+        "behavior": effective_behavior(candidate),
+    }
+    return digest(
+        json.dumps(
+            identity, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    )
+
+
+def code_revisions(config):
+    revisions = config.get("codeRevisions", {})
+    for key in ("rl", "runtime"):
+        if not isinstance(revisions.get(key), str) or not re.fullmatch(
+            r"[0-9a-f]{40}", revisions[key]
+        ):
+            raise ValueError("codeRevisions requires full fixed rl and runtime commits")
+    return dict(revisions)
+
+
 class Simulator:
     def __init__(self, candidate):
-        self.cfg = candidate
+        self.cfg = {**candidate, **effective_behavior(candidate)}
         self.model = mujoco.MjModel.from_xml_path(candidate["modelPath"])
         self.data = mujoco.MjData(self.model)
         self.substeps = round(DT / self.model.opt.timestep)
@@ -217,27 +273,8 @@ class Simulator:
         if self.gyro < 0:
             raise ValueError("imu_ang_vel sensor missing")
         self.gyroadr = int(self.model.sensor_adr[self.gyro])
-        self.home = np.asarray(
-            candidate.get("homePose", DEFAULT_JOINT_POSE), dtype=np.float32
-        )
-        self.sit = self.home.copy()
-        self.sit[[1, 2, 3, 4, 10, 11, 12, 13]] = [
-            0,
-            -0.4079,
-            1.35,
-            0,
-            0,
-            0.4079,
-            -1.35,
-            0,
-        ]
-        self.sit = np.asarray(candidate.get("sitPose", self.sit), dtype=np.float32)
-        if (
-            self.home.shape != (14,)
-            or self.sit.shape != (14,)
-            or not np.isfinite([self.home, self.sit]).all()
-        ):
-            raise ValueError("poses must contain 14 finite angles")
+        self.home = np.asarray(self.cfg["homePose"], dtype=np.float32)
+        self.sit = np.asarray(self.cfg["sitPose"], dtype=np.float32)
         options = ort.SessionOptions()
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
@@ -355,6 +392,17 @@ class Simulator:
         return {
             "maxPoseErrorRad": error,
             "heightM": height,
+            "poseRmseRad": float(
+                np.sqrt(np.mean(np.square(q - (self.sit if sitting else self.home))))
+            ),
+            "heightDeviationM": abs(
+                height
+                - (
+                    self.cfg.get("sitHeightM", 0.060)
+                    if sitting
+                    else (lim.trunk_height_min_m + lim.trunk_height_max_m) / 2
+                )
+            ),
             "maxTiltRad": tilt,
             "maxJointSpeedRadps": speed,
             "settled": bool(settled),
@@ -431,7 +479,16 @@ def evaluate(sim, scenario, seed, staging, record):
         "actuatorClampSteps": 0,
         "physicalJointLimitViolations": 0,
         "transitionSeconds": 0.0,
+        "maxPoseRmseRad": 0.0,
+        "maxStandPoseRmseRad": 0.0,
+        "maxHeightDeviationM": 0.0,
+        "controlSteps": 0,
+        "settledSteps": 0,
+        "holdSteps": 0,
+        "completedPhases": 0,
+        "durationSeconds": 0.0,
     }
+    phase_results = []
     video = None
     video_unavailable = None
 
@@ -463,6 +520,8 @@ def evaluate(sim, scenario, seed, staging, record):
                 "commandSit",
                 "maxPoseErrorRad",
                 "heightM",
+                "poseRmseRad",
+                "heightDeviationM",
                 "maxTiltRad",
                 "maxJointSpeedRadps",
                 "settled",
@@ -483,6 +542,18 @@ def evaluate(sim, scenario, seed, staging, record):
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
             for phase, sitting in enumerate(phases):
+                phase_result = {
+                    "index": phase,
+                    "target": "SIT" if sitting else "STAND",
+                    "controlSteps": 0,
+                    "settledSteps": 0,
+                    "holdSteps": 0,
+                    "durationSeconds": 0.0,
+                    "transitionSeconds": 0.0,
+                    "transitionCompleted": False,
+                    "maxPoseRmseRad": 0.0,
+                    "maxHeightDeviationM": 0.0,
+                }
                 window = StrictWindow()
                 for step in range(2001):
                     local = (step + 1) * DT
@@ -501,6 +572,25 @@ def evaluate(sim, scenario, seed, staging, record):
                     except (FloatingPointError, ValueError) as error:
                         reason = str(error)
                         break
+                    phase_result["controlSteps"] += 1
+                    phase_result["settledSteps"] += int(measured["settled"])
+                    phase_result["maxPoseRmseRad"] = max(
+                        phase_result["maxPoseRmseRad"], measured["poseRmseRad"]
+                    )
+                    phase_result["maxHeightDeviationM"] = max(
+                        phase_result["maxHeightDeviationM"],
+                        measured["heightDeviationM"],
+                    )
+                    metrics["maxPoseRmseRad"] = max(
+                        metrics["maxPoseRmseRad"], measured["poseRmseRad"]
+                    )
+                    metrics["maxHeightDeviationM"] = max(
+                        metrics["maxHeightDeviationM"], measured["heightDeviationM"]
+                    )
+                    if not sitting:
+                        metrics["maxStandPoseRmseRad"] = max(
+                            metrics["maxStandPoseRmseRad"], measured["poseRmseRad"]
+                        )
                     metrics["actuatorClampSteps"] += int(clamps)
                     metrics["physicalJointLimitViolations"] += violations
                     for key in ("maxPoseErrorRad", "maxTiltRad", "maxJointSpeedRadps"):
@@ -536,10 +626,41 @@ def evaluate(sim, scenario, seed, staging, record):
                         metrics["falls"] += 1
                         reason = "FALL"
                         break
+                    if window.settled_at is not None and measured["settled"]:
+                        phase_result["holdSteps"] += 1
                     outcome = window.step(local, measured["settled"])
                     if outcome:
                         reason = outcome
                         break
+                phase_result.update(
+                    status="PASSED" if reason == "PASSED" else "FAILED",
+                    reason=reason,
+                    durationSeconds=phase_result["controlSteps"] * DT,
+                    transitionSeconds=window.settled_at or 0.0,
+                    transitionCompleted=window.settled_at is not None,
+                )
+                phase_result["holdSeconds"] = phase_result["holdSteps"] * DT
+                phase_results.append(phase_result)
+                for key in ("controlSteps", "settledSteps", "holdSteps"):
+                    metrics[key] += phase_result[key]
+                    metrics[f"phase{phase}{key[0].upper() + key[1:]}"] = phase_result[
+                        key
+                    ]
+                metrics["completedPhases"] += int(reason == "PASSED")
+                metrics["durationSeconds"] += phase_result["durationSeconds"]
+                metrics[f"phase{phase}Passed"] = reason == "PASSED"
+                metrics[f"phase{phase}TransitionSeconds"] = phase_result[
+                    "transitionSeconds"
+                ]
+                for key in (
+                    "durationSeconds",
+                    "transitionCompleted",
+                    "maxPoseRmseRad",
+                    "maxHeightDeviationM",
+                ):
+                    metrics[f"phase{phase}{key[0].upper() + key[1:]}"] = phase_result[
+                        key
+                    ]
                 if window.settled_at is not None:
                     metrics["transitionSeconds"] = max(
                         metrics["transitionSeconds"], window.settled_at
@@ -547,6 +668,24 @@ def evaluate(sim, scenario, seed, staging, record):
                 if reason != "PASSED":
                     break
             metrics["strictHoldPassed"] = reason == "PASSED"
+            for phase in range(len(phase_results), len(phases)):
+                phase_results.append(
+                    {
+                        "index": phase,
+                        "target": "SIT" if phases[phase] else "STAND",
+                        "status": "NOT_RUN",
+                        "reason": "PRIOR_PHASE_FAILED",
+                        "controlSteps": 0,
+                        "settledSteps": 0,
+                        "holdSteps": 0,
+                        "holdSeconds": 0.0,
+                        "durationSeconds": 0.0,
+                        "transitionSeconds": 0.0,
+                        "transitionCompleted": False,
+                    }
+                )
+                metrics[f"phase{phase}Passed"] = False
+                metrics[f"phase{phase}HoldSteps"] = 0
     finally:
         if video:
             try:
@@ -564,6 +703,7 @@ def evaluate(sim, scenario, seed, staging, record):
         "videoArtifactId": cid if video else None,
         "csvArtifactId": cid,
         "videoUnavailableReason": video_unavailable,
+        "phases": phase_results,
     }
 
 
@@ -591,6 +731,7 @@ def main():
                 r"sha256:[0-9a-f]{64}", candidate[key]
             ):
                 raise ValueError(f"candidate {candidate['id']} requires valid {key}")
+    revisions = code_revisions(config)
     args.output_root.mkdir(parents=True, exist_ok=True)
     if (args.output_root / experiment).exists():
         raise FileExistsError(experiment)
@@ -607,6 +748,7 @@ def main():
         "criteriaVersion": "SITSTAND_DIAGNOSTIC_V1",
         "provenance": {
             "config": config,
+            "codeRevisions": revisions,
             "configSha256": digest(args.config.read_bytes()),
             "evaluatorSha256": digest(Path(__file__).read_bytes()),
             "cpuOnly": True,
@@ -625,6 +767,7 @@ def main():
         "cases": [],
         "checks": [],
     }
+    seen_identities = {}
     try:
         for original in config["candidates"]:
             c = dict(original)
@@ -656,24 +799,17 @@ def main():
                 entry["modelClosureSha256"] = digest(
                     json.dumps(closure, sort_keys=True, separators=(",", ":")).encode()
                 )
-                for key in ("actionScale", "sitHeightM", "sitCommandDelaySeconds"):
-                    value = c.get(
-                        key,
-                        {
-                            "actionScale": 0.9,
-                            "sitHeightM": 0.060,
-                            "sitCommandDelaySeconds": 0.0,
-                        }[key],
-                    )
-                    if (
-                        not isinstance(value, (int, float))
-                        or not math.isfinite(value)
-                        or value < 0
-                    ):
-                        raise ValueError("invalid " + key)
+                entry["effectiveBehavior"] = effective_behavior(c)
+                identity = candidate_identity(c, entry["modelClosureSha256"])
+                entry["effectiveIdentitySha256"] = identity
+                if identity in seen_identities:
+                    seen_identities[identity].setdefault("aliases", []).append(entry)
+                    report["candidates"].remove(entry)
+                    continue
                 sim = Simulator(c)
                 entry["onnxMetadata"] = sim.metadata
                 entry["experimentalOnly"] = True
+                seen_identities[identity] = entry
             except Exception as error:  # noqa: BLE001 - preserve each invalid candidate as UNAVAILABLE
                 unavailable = str(error)
             first_failure_recorded = False

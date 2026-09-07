@@ -156,6 +156,8 @@ def test_failed_case_keeps_joint_and_action_trace_without_renderer(
         def measure(self, *args):
             return {
                 "maxPoseErrorRad": 0.0,
+                "poseRmseRad": 0.0,
+                "heightDeviationM": 0.0,
                 "heightM": 0.01,
                 "maxTiltRad": 0.0,
                 "maxJointSpeedRadps": 0.0,
@@ -176,6 +178,10 @@ def test_failed_case_keeps_joint_and_action_trace_without_renderer(
     assert case["status"] == "FAILED" and case["reason"] == "FALL"
     assert rows[0]["jointPosition13"] == "0.0"
     assert rows[0]["action13"] == "1.0"
+    sequence = m.evaluate(Sim(), "STAND_SIT_STAND", 7, tmp_path, False)
+    assert [p["status"] for p in sequence["phases"]] == ["FAILED", "NOT_RUN", "NOT_RUN"]
+    assert sequence["metrics"]["controlSteps"] == 1
+    assert sequence["metrics"]["completedPhases"] == 0
 
 
 def test_stand_uses_fork_rmse_but_sit_uses_max_error():
@@ -225,3 +231,148 @@ def test_malformed_identity_fails_before_creating_output(tmp_path):
     assert result.returncode != 0
     assert "requires valid policySha256" in result.stderr
     assert not (tmp_path / "out").exists()
+
+
+def test_effective_identity_deduplicates_alias_but_keeps_behavior_differences():
+    m = module()
+    m.load_dependencies()
+    original = {
+        "policySha256": "sha256:" + "a" * 64,
+        "modelSha256": "sha256:" + "b" * 64,
+    }
+    closure = "sha256:" + "c" * 64
+    identity = m.candidate_identity(original, closure)
+    alias = {**original, "id": "another", "source": "another url", "actionScale": 0.9}
+    assert m.candidate_identity(alias, closure) == identity
+    assert m.candidate_identity({**original, "actionScale": 1}, closure) != identity
+    assert m.candidate_identity(original, "sha256:" + "d" * 64) != identity
+    assert (
+        m.candidate_identity(
+            {**original, "resetPreviousActionOnCommandChange": True}, closure
+        )
+        != identity
+    )
+
+
+def test_sequence_reports_phase_progress_and_retains_state(tmp_path):
+    m = module()
+    m.load_dependencies()
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    class Sim:
+        def __init__(self):
+            self.cfg = {
+                "id": "sequence",
+                "resetPreviousActionOnCommandChange": True,
+                "sitCommandDelaySeconds": 0.8,
+            }
+            self.data = SimpleNamespace(qpos=np.zeros(14), qvel=np.zeros(14))
+            self.qids = self.vids = np.arange(14)
+            self.previous = np.zeros(14)
+            self.last_obs = np.zeros(61)
+            self.resets = 0
+            self.edges = []
+            self.last_sit = False
+
+        def reset(self, *args):
+            self.resets += 1
+
+        def step(self, sitting):
+            if sitting != self.last_sit:
+                self.edges.append((sitting, float(self.previous[0])))
+            self.last_sit = sitting
+            self.previous[:] = 1
+            return False, 0
+
+        def measure(self, sitting):
+            return {
+                "maxPoseErrorRad": 0.0,
+                "poseRmseRad": 0.0,
+                "heightDeviationM": 0.0,
+                "heightM": 0.06 if sitting else 0.115,
+                "maxTiltRad": 0.0,
+                "maxJointSpeedRadps": 0.0,
+                "settled": sitting == self.last_sit,
+                "fall": False,
+            }
+
+    sim = Sim()
+    case = m.evaluate(sim, "STAND_SIT_STAND", 7, tmp_path, False)
+    assert case["status"] == "PASSED"
+    assert sim.resets == 1
+    assert sim.edges == [(True, 0.0), (False, 0.0)]
+    assert len(case["phases"]) == 3
+    assert [p["target"] for p in case["phases"]] == ["STAND", "SIT", "STAND"]
+    assert all(
+        p["holdSteps"] == 1500 and p["status"] == "PASSED" for p in case["phases"]
+    )
+    assert case["phases"][1]["transitionSeconds"] == pytest.approx(0.98)
+    assert case["metrics"]["completedPhases"] == 3
+    assert case["metrics"]["holdSteps"] == 4500
+    assert case["metrics"]["durationSeconds"] > 90
+
+
+def test_main_collapses_verified_aliases_and_records_fixed_revisions(
+    tmp_path, monkeypatch
+):
+    m = module()
+    m.load_dependencies()
+    import sys
+    from types import SimpleNamespace
+
+    model = tmp_path / "scene.xml"
+    model.write_text("<mujoco/>")
+    policy = tmp_path / "policy.onnx"
+    policy.write_bytes(b"policy-boundary-fixture")
+    candidate = {
+        "id": "first",
+        "label": "First",
+        "policyPath": "policy.onnx",
+        "policySha256": m.digest(policy.read_bytes()),
+        "modelPath": "scene.xml",
+        "modelSha256": m.digest(model.read_bytes()),
+        "modelClosure": [{"path": "scene.xml", "sha256": m.digest(model.read_bytes())}],
+    }
+    config = {
+        "experimentId": "aliases",
+        "codeRevisions": {"rl": "a" * 40, "runtime": "b" * 40},
+        "candidates": [
+            candidate,
+            {**candidate, "id": "alias", "source": "another source"},
+            {**candidate, "id": "different-scale", "actionScale": 1.0},
+        ],
+    }
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    monkeypatch.setattr(m, "Simulator", lambda c: SimpleNamespace(cfg=c, metadata={}))
+
+    def evaluate(sim, scenario, seed, *args):
+        return {
+            "id": f"{sim.cfg['id']}-{scenario}-{seed}",
+            "candidateId": sim.cfg["id"],
+            "scenario": scenario,
+            "seed": seed,
+            "status": "PASSED",
+            "reason": "fixture",
+            "metrics": {},
+            "videoArtifactId": None,
+            "csvArtifactId": None,
+        }
+
+    monkeypatch.setattr(m, "evaluate", evaluate)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["evaluate", "--config", str(path), "--output-root", str(tmp_path / "out")],
+    )
+    m.main()
+    report = json.loads((tmp_path / "out/aliases/report.json").read_text())
+    assert report["provenance"]["codeRevisions"] == config["codeRevisions"]
+    assert len(report["candidates"]) == 2
+    assert len(report["cases"]) == 64
+    assert report["candidates"][0]["aliases"][0]["id"] == "alias"
+    assert report["candidates"][1]["effectiveBehavior"]["actionScale"] == 1.0
+    with pytest.raises(ValueError, match="full fixed"):
+        m.code_revisions({"codeRevisions": {"rl": "a" * 40, "runtime": "branch-main"}})
