@@ -62,6 +62,7 @@ COPY src/mjlab_microduck/rom/__init__.py \
     src/mjlab_microduck/rom/service.py \
     src/mjlab_microduck/rom/store.py \
     src/mjlab_microduck/rom/supervisor_state.py \
+    src/mjlab_microduck/rom/viewer.py \
     /app/src/mjlab_microduck/rom/
 COPY src/mjlab_microduck/rom/navigation/__init__.py \
     src/mjlab_microduck/rom/navigation/environment.py \

@@ -44,6 +44,8 @@ from .process_protocol import (
     StatusPayload,
     TerminalEventPayload,
     TerminalPayload,
+    ViewerReplyPayload,
+    ViewerRequestPayload,
     ZeroAndStopPayload,
     decode_packet,
     encode_packet,
@@ -169,6 +171,7 @@ class RuntimeChildHost:
         self._cleanup_timed_out = threading.Event()
         self._safety_start_lock = threading.Lock()
         self._safety_reason: str | None = None
+        self._viewer_transfer = {}
         self._runtime: SimulationRuntime | None = None
         self._bundle: PolicyBundle | None = None
         self._handle: RuntimeHandle | None = None
@@ -270,6 +273,7 @@ class RuntimeChildHost:
             if message.kind not in {
                 RuntimeMessageKind.HELLO,
                 RuntimeMessageKind.OBSERVE,
+                RuntimeMessageKind.VIEWER,
                 RuntimeMessageKind.LOAD,
                 RuntimeMessageKind.START,
                 RuntimeMessageKind.COMMAND,
@@ -747,7 +751,60 @@ class RuntimeChildHost:
         self._sample_thread = None
         return True
 
+    def _viewer_reply(self, message):
+        from uuid import uuid4
+        from .viewer import CHUNK_CHARS, encode_display, FRAME_MAX_BYTES
+
+        request = message.payload
+        assert isinstance(request, ViewerRequestPayload)
+        try:
+            if self._runtime is None:
+                raise ValueError("viewer unavailable")
+            if request.offset == 0:
+                if request.resource == "model":
+                    entry = self._viewer_transfer.get("model")
+                    if entry is None:
+                        entry = (
+                            uuid4().hex,
+                            self._runtime.viewer_model_text(),
+                        )
+                else:
+                    entry = (
+                        uuid4().hex,
+                        encode_display(self._runtime.viewer_frame(), FRAME_MAX_BYTES),
+                    )
+                self._viewer_transfer[request.resource] = entry
+            else:
+                entry = self._viewer_transfer[request.resource]
+                if request.token != entry[0]:
+                    raise ValueError("viewer transfer expired")
+            token, text = entry
+            if request.offset >= len(text):
+                raise ValueError("viewer offset out of range")
+            payload = ViewerReplyPayload(
+                offset=request.offset,
+                total=len(text),
+                token=token,
+                text=text[request.offset : request.offset + CHUNK_CHARS],
+            )
+        except Exception:
+            # Viewer failure is explicitly nonfatal; never enter control cleanup.
+            payload = ViewerReplyPayload(
+                offset=request.offset,
+                total=0,
+                token="0" * 32,
+                text="",
+                unavailable=True,
+            )
+        self._send(self._response(message, RuntimeMessageKind.VIEWER_REPLY, payload))
+
     def _handle_message(self, message: RuntimeMessage) -> bool:
+        if message.kind is RuntimeMessageKind.VIEWER:
+            if message.operationSequence <= self._last_sequence:
+                return True
+            self._last_sequence = message.operationSequence
+            self._viewer_reply(message)
+            return True
         self._last_request = message
         if message.operationSequence <= self._last_sequence:
             self._error(message)
@@ -798,6 +855,7 @@ class RuntimeChildHost:
                     raise ValueError
                 runtime = self._runtime_factory(root, bundle)
                 self._bundle, self._runtime = bundle, runtime
+                self._viewer_transfer.clear()
                 self._send(
                     self._response(
                         message,
@@ -1043,12 +1101,14 @@ class RuntimeChildHost:
             ) -> None:
                 outcome.append(self._handle_message(current))
 
-            self._operation_active.set()
+            if message.kind is not RuntimeMessageKind.VIEWER:
+                self._operation_active.set()
             operation = threading.Thread(
                 target=execute, name="runtime-child-operation", daemon=True
             )
             operation.start()
-            while operation.is_alive() and not self._safety_requested.wait(0.01):
+            wait_slice = .001 if message.kind is RuntimeMessageKind.VIEWER else .01
+            while operation.is_alive() and not self._safety_requested.wait(wait_slice):
                 pass
             self._operation_active.clear()
             if self._safety_requested.is_set() or not result or not result[0]:

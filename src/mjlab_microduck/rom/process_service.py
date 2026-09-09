@@ -294,6 +294,12 @@ class SimulatorTaskService:
             active.stop_claimed = True
         return self._request_stop(active, "CANCELLED")
 
+    def viewer_model(self):
+        return self._supervisor.viewer_model()
+
+    def viewer_frame(self):
+        return self._supervisor.viewer_frame()
+
     def observe_navigation(self):
         return self._supervisor.observe()
 

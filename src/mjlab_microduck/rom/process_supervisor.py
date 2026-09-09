@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import select
@@ -31,6 +32,7 @@ from .process_protocol import (
     StatusRequestPayload,
     TerminalEventPayload,
     TerminalPayload,
+    ViewerRequestPayload,
     ZeroAndStopPayload,
     decode_packet,
     encode_packet,
@@ -115,7 +117,7 @@ class ChildLaunch:
 
 type LaunchFactory = Callable[[int], ChildLaunch]
 type IntentKind = Literal[
-    "ready", "start", "command", "status", "observe", "stop", "close", "delivery"
+    "ready", "start", "command", "status", "observe", "viewer", "stop", "close", "delivery"
 ]
 
 
@@ -126,6 +128,7 @@ class _Intent:
     done: threading.Event = field(default_factory=threading.Event)
     result: Any = None
     error: BaseException | None = None
+    expires_at: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +227,11 @@ class RuntimeProcessSupervisor:
         self._closing = threading.Event()
         self._close_lock = threading.Lock()
         self._submission_lock = threading.Lock()
+        self._viewer_queue: queue.Queue[_Intent] = queue.Queue(maxsize=1)
+        self._viewer_lock = threading.Lock()
+        self._viewer_cache = {}
+        self._viewer_expired_sequence = 0
+
         self._close_intent: _Intent | None = None
         self._thread = threading.Thread(
             target=self._run, name=owner_thread_name, daemon=True
@@ -338,6 +346,72 @@ class RuntimeProcessSupervisor:
     ) -> AckPayload:
         return self._submit("command", task_id, command, lease_ms)
 
+    def viewer_model(self):
+        return self._viewer_read("model")
+
+    def viewer_frame(self):
+        return self._viewer_read("frame")
+
+    def _viewer_read(self, resource):
+        from .viewer import MODEL_MAX_BYTES, FRAME_MAX_BYTES
+
+        if not self._viewer_lock.acquire(blocking=False):
+            raise SupervisorUnavailable("viewer busy")
+        try:
+            snapshot = self.snapshot()
+            if not snapshot.child_healthy:
+                raise SupervisorUnavailable("viewer unavailable")
+            generation = snapshot.generation
+            cached = self._viewer_cache.get(resource)
+            if (
+                cached
+                and cached[0] == generation
+                and (resource == "model" or time.monotonic() - cached[1] < 0.2)
+            ):
+                return cached[2]
+            offset, token, pieces, total = 0, None, [], None
+            deadline = time.monotonic() + (4.5 if resource == "model" else 0.5)
+            limit = MODEL_MAX_BYTES if resource == "model" else FRAME_MAX_BYTES
+            while True:
+                if (
+                    time.monotonic() >= deadline
+                    or self.snapshot().generation != generation
+                ):
+                    raise SupervisorUnavailable("viewer transfer expired")
+                response = self._submit(
+                    "viewer",
+                    ViewerRequestPayload(resource=resource, offset=offset, token=token),
+                    generation,
+                )
+                if (
+                    response.unavailable
+                    or response.offset != offset
+                    or response.total > limit
+                    or not response.text
+                ):
+                    raise SupervisorUnavailable("viewer unavailable")
+                if token is not None and (
+                    token != response.token or total != response.total
+                ):
+                    raise SupervisorUnavailable("viewer identity changed")
+                token, total = response.token, response.total
+                pieces.append(response.text)
+                offset += len(response.text)
+                if offset > total:
+                    raise SupervisorUnavailable("viewer size mismatch")
+                if offset == total:
+                    break
+            result = json.loads("".join(pieces))
+            if (
+                self.snapshot().generation != generation
+                or not self.snapshot().child_healthy
+            ):
+                raise SupervisorUnavailable("viewer generation changed")
+            self._viewer_cache[resource] = (generation, time.monotonic(), result)
+            return result
+        finally:
+            self._viewer_lock.release()
+
     def observe(self) -> RobotStatus:
         return self._submit("observe")
 
@@ -409,6 +483,19 @@ class RuntimeProcessSupervisor:
         self._record("TERMINAL_WORKER_TERMINATED")
 
     def _submit(self, kind: IntentKind, *args: object) -> Any:
+        if kind == "viewer":
+            if self._closed or self._closing.is_set():
+                raise SupervisorUnavailable("viewer unavailable")
+            intent = _Intent(kind=kind, args=args, expires_at=time.monotonic() + .15)
+            try:
+                self._viewer_queue.put_nowait(intent)
+            except queue.Full:
+                raise SupervisorUnavailable("viewer busy") from None
+            if not intent.done.wait(.2):
+                raise SupervisorUnavailable("viewer deadline exceeded")
+            if intent.error is not None:
+                raise intent.error
+            return intent.result
         with self._submission_lock:
             if (self._closed or self._closing.is_set()) and kind != "close":
                 raise SupervisorUnavailable("supervisor is closed")
@@ -486,7 +573,10 @@ class RuntimeProcessSupervisor:
                 intent = self._queue.get(timeout=0.01)
             except queue.Empty:
                 self._poll_unsolicited()
-                continue
+                try:
+                    intent = self._viewer_queue.get_nowait()
+                except queue.Empty:
+                    continue
             try:
                 intent.result = self._dispatch(intent)
             except Exception as exc:  # noqa: BLE001 - owner must wake callers
@@ -538,6 +628,19 @@ class RuntimeProcessSupervisor:
             return self._start(intent.args[0], intent.args[1], intent.args[2])
         if intent.kind == "command":
             return self._command(*intent.args)
+        if intent.kind == "viewer":
+            if intent.expires_at is not None and time.monotonic() >= intent.expires_at:
+                raise SupervisorUnavailable("viewer intent expired")
+            if not self.snapshot().child_healthy or self._generation != intent.args[1]:
+                raise SupervisorUnavailable("viewer generation unavailable")
+            try:
+                response = self._exchange(RuntimeMessageKind.VIEWER, None, intent.args[0],
+                                          {RuntimeMessageKind.VIEWER_REPLY})
+                return response.payload
+            except Exception:
+                # Late viewer replies are discardable, unlike control receipts.
+                self._viewer_expired_sequence = self._sequence
+                raise SupervisorUnavailable("viewer unavailable") from None
         if intent.kind == "observe":
             return self._observe()
         if intent.kind == "status":
@@ -547,6 +650,7 @@ class RuntimeProcessSupervisor:
         raise AssertionError(intent.kind)
 
     def _spawn(self) -> None:
+        self._viewer_expired_sequence = 0
         self._generation += 1
         self._sequence = 0
         # No reap evidence may cross a spawn boundary, even if the kernel later
@@ -819,7 +923,8 @@ class RuntimeProcessSupervisor:
             raise
         if on_sent is not None:
             on_sent()
-        deadline = time.monotonic() + self._operation_timeout
+        timeout = min(.1, self._operation_timeout) if kind is RuntimeMessageKind.VIEWER else self._operation_timeout
+        deadline = time.monotonic() + timeout
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -833,8 +938,12 @@ class RuntimeProcessSupervisor:
             if not packet:
                 raise ConnectionError("child transport closed")
             response = decode_packet(packet)
+            if self._discard_viewer_reply(response):
+                continue
             if response.kind is RuntimeMessageKind.TERMINAL_EVENT:
                 self._accept_terminal_event(response)
+                if kind is RuntimeMessageKind.VIEWER:
+                    continue
                 raise SupervisorTaskTerminalized(
                     "task terminalized while operation was pending"
                 )
@@ -846,6 +955,13 @@ class RuntimeProcessSupervisor:
             ):
                 raise SupervisorOperationError("ambiguous child response")
             return response
+
+    def _discard_viewer_reply(self, message):
+        return (
+            message.kind is RuntimeMessageKind.VIEWER_REPLY
+            and message.generation == self._generation
+            and message.operationSequence <= self._viewer_expired_sequence
+        )
 
     def _consume_prequeued_terminal(self) -> None:
         """Accept one terminal queued before a new synchronous request."""
@@ -859,6 +975,8 @@ class RuntimeProcessSupervisor:
         if not packet:
             raise ConnectionError("child transport closed")
         response = decode_packet(packet)
+        if self._discard_viewer_reply(response):
+            return self._consume_prequeued_terminal()
         if response.kind is not RuntimeMessageKind.TERMINAL_EVENT:
             raise SupervisorOperationError("unexpected prequeued response")
         self._accept_terminal_event(response)
@@ -887,6 +1005,8 @@ class RuntimeProcessSupervisor:
             if not packet:
                 raise ConnectionError("child transport closed")
             message = decode_packet(packet)
+            if self._discard_viewer_reply(message):
+                return
             if message.kind is not RuntimeMessageKind.TERMINAL_EVENT:
                 raise SupervisorOperationError("unexpected unsolicited response")
             self._accept_terminal_event(message)
