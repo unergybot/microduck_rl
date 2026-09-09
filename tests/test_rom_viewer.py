@@ -386,3 +386,116 @@ def test_first_child_model_read_uses_preencoded_geometry(tmp_path, monkeypatch):
     finally:
         parent.close()
         child.close()
+
+
+@pytest.mark.parametrize(
+    "age,available", [(0.5, True), (0.9, True), (1.0, False), (2.0, False)]
+)
+@pytest.mark.parametrize("running", [False, True])
+def test_control_lock_contention_uses_only_recent_matching_frame(
+    tmp_path, age, available, running
+):
+    import threading
+
+    bundle = _write_verified_bundle(tmp_path / "bundle")
+    runtime = MicroduckMujocoRuntime(tmp_path / "bundle", bundle, realtime=False)
+    if running:
+        from types import SimpleNamespace
+
+        runtime._active_request = SimpleNamespace(taskId="running-task")
+        runtime._active_handle = SimpleNamespace(taskId="running-task")
+    frame = runtime.viewer_frame()
+    runtime._viewer.sampled_at = time.monotonic() - age
+    held, release = threading.Event(), threading.Event()
+
+    def hold_control_lock():
+        with runtime._lock:
+            held.set()
+            release.wait(2)
+
+    thread = threading.Thread(target=hold_control_lock)
+    thread.start()
+    assert held.wait(1)
+    try:
+        started = time.monotonic()
+        if available:
+            assert runtime.viewer_frame() is frame
+            assert runtime._viewer.sequence == 1
+        else:
+            with pytest.raises(ValueError):
+                runtime.viewer_frame()
+        assert time.monotonic() - started < 0.1
+    finally:
+        release.set()
+        thread.join(1)
+
+
+@pytest.mark.parametrize("transition", ["start", "stop", "replace", "empty"])
+def test_control_lock_fallback_rejects_task_transition_and_empty_cache(
+    tmp_path, transition
+):
+    import threading
+    from types import SimpleNamespace
+
+    bundle = _write_verified_bundle(tmp_path / "bundle")
+    runtime = MicroduckMujocoRuntime(tmp_path / "bundle", bundle, realtime=False)
+    if transition in {"stop", "replace"}:
+        runtime._active_request = SimpleNamespace(taskId="first")
+        runtime._active_handle = SimpleNamespace(taskId="first")
+    if transition != "empty":
+        runtime.viewer_frame()
+    if transition in {"start", "replace"}:
+        runtime._active_request = SimpleNamespace(taskId="second")
+        runtime._active_handle = SimpleNamespace(taskId="second")
+    elif transition == "stop":
+        runtime._active_request = runtime._active_handle = None
+    held, release = threading.Event(), threading.Event()
+
+    def hold_control_lock():
+        with runtime._lock:
+            held.set()
+            release.wait(2)
+
+    thread = threading.Thread(target=hold_control_lock)
+    thread.start()
+    assert held.wait(1)
+    try:
+        with pytest.raises(ValueError):
+            runtime.viewer_frame()
+    finally:
+        release.set()
+        thread.join(1)
+
+
+def test_control_lock_cache_replacement_cannot_rejuvenate_old_frame(tmp_path):
+    import threading
+
+    bundle = _write_verified_bundle(tmp_path / "bundle")
+    runtime = MicroduckMujocoRuntime(tmp_path / "bundle", bundle, realtime=False)
+    old_frame = runtime.viewer_frame()
+
+    class ReplacingCache:
+        frame = old_frame
+
+        @property
+        def sampled_at(self):
+            self.frame = dict(old_frame, sequence=old_frame["sequence"] + 1)
+            return time.monotonic() - 0.1
+
+    runtime._viewer = ReplacingCache()
+    held, release = threading.Event(), threading.Event()
+
+    def hold_control_lock():
+        with runtime._lock:
+            held.set()
+            release.wait(2)
+
+    thread = threading.Thread(target=hold_control_lock)
+    thread.start()
+    assert held.wait(1)
+    try:
+        with pytest.raises(ValueError):
+            runtime.viewer_frame()
+    finally:
+        release.set()
+        thread.join(1)
