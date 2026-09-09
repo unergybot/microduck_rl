@@ -258,9 +258,12 @@ class MicroduckMujocoRuntime:
         self._validate_installed_actions()
         self._reset_model_locked()
         from .viewer import RuntimeViewer
+
         self._viewer = None
         try:
-            self._viewer = RuntimeViewer(self._model, bundle)
+            self._viewer = RuntimeViewer(
+                self._model, bundle, trunk_body_id=self._trunk_body_id
+            )
         except Exception:
             # Display assets must never make a valid control bundle unavailable.
             pass
