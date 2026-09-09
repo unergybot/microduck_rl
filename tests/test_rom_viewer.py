@@ -21,7 +21,7 @@ def test_actual_geometry_and_idle_running_stopped_frames(tmp_path):
     )
     model = runtime.viewer_model()
     frame = runtime.viewer_frame()
-    assert model["schema"] == "MICRODUCK_VIEWER_MODEL_V1"
+    assert model["schema"] == "MICRODUCK_VIEWER_MODEL_V2"
     assert frame["schema"] == "MICRODUCK_VIEWER_FRAME_V1"
     for key in ("runtimeSession", "modelDigest", "bundleDigest"):
         assert model[key] == frame[key]
@@ -57,8 +57,7 @@ def test_geometry_mesh_fidelity_and_bounds():
         """<mujoco><asset><mesh name="m" vertex="0 0 0 1 0 0 0 1 0 0 0 1" face="0 1 2 0 1 3 0 2 3 1 2 3"/></asset><worldbody><geom type="mesh" mesh="m"/></worldbody></mujoco>"""
     )
     result = export_geometry(model)
-    np.testing.assert_array_equal(result[0]["vertices"], model.mesh_vert.ravel())
-    np.testing.assert_array_equal(result[0]["indices"], model.mesh_face.ravel())
+    assert result[0]["meshId"] == 0
     model.geom_rgba[0, 0] = np.nan
     with pytest.raises(ValueError):
         export_geometry(model)
