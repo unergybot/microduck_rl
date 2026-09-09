@@ -17,8 +17,17 @@ signal.signal(signal.SIGTERM, _terminate_before_server)
 # and before importing any application closure that can create a runtime child.
 import os
 
+_ready_path = "/tmp/.microduck-pid1-sigterm-ready"
+# Docker restarts preserve a writable /tmp. Discard the previous process's
+# barrier (including a dangling symlink), then publish this process's marker.
+# Keep exclusive creation so a raced-in path is never followed or truncated.
+try:
+    os.unlink(_ready_path)
+except FileNotFoundError:
+    pass
+
 _ready_fd = os.open(
-    "/tmp/.microduck-pid1-sigterm-ready",
+    _ready_path,
     os.O_CREAT | os.O_EXCL | os.O_WRONLY,
     0o600,
 )
