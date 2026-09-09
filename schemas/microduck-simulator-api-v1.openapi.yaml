@@ -3,6 +3,54 @@ info:
   title: MicroDuck ROM Simulator API
   version: 1.0.0
 paths:
+  /v1/viewer/model:
+    get:
+      summary: Viewer Model
+      operationId: viewerModel
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /v1/viewer/frame:
+    get:
+      summary: Viewer Frame
+      operationId: viewerFrame
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /v1/health:
     get:
       summary: Health

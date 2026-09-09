@@ -65,6 +65,7 @@ _REPOSITORY_FILES: Final[frozenset[str]] = frozenset(
         "src/mjlab_microduck/rom/service.py",
         "src/mjlab_microduck/rom/store.py",
         "src/mjlab_microduck/rom/supervisor_state.py",
+        "src/mjlab_microduck/rom/viewer.py",
     }
 )
 _IMAGE_RUNTIME_FILES: Final[frozenset[str]] = frozenset(

@@ -90,8 +90,10 @@ class RuntimeMessageKind(str, Enum):
     COMMAND = "COMMAND"
     STATUS = "STATUS"
     OBSERVE = "OBSERVE"
+    VIEWER = "VIEWER"
     ZERO_AND_STOP = "ZERO_AND_STOP"
     SHUTDOWN = "SHUTDOWN"
+    VIEWER_REPLY = "VIEWER_REPLY"
     READY = "READY"
     ACK = "ACK"
     TERMINAL = "TERMINAL"
@@ -108,6 +110,7 @@ class RuntimeOperationKind(str, Enum):
     COMMAND = "COMMAND"
     STATUS = "STATUS"
     OBSERVE = "OBSERVE"
+    VIEWER = "VIEWER"
     ZERO_AND_STOP = "ZERO_AND_STOP"
     SHUTDOWN = "SHUTDOWN"
 
@@ -207,8 +210,24 @@ class ErrorPayload(ContractModel):
             return value
 
 
+class ViewerRequestPayload(ContractModel):
+    resource: Literal["model", "frame"]
+    offset: int = Field(default=0, strict=True, ge=0, le=8 * 1024 * 1024)
+    token: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+
+
+class ViewerReplyPayload(ContractModel):
+    offset: int = Field(strict=True, ge=0, le=8 * 1024 * 1024)
+    total: int = Field(strict=True, ge=0, le=8 * 1024 * 1024)
+    token: str = Field(pattern=r"^[0-9a-f]{32}$")
+    text: str = Field(max_length=24000, pattern=r"^[ -~]*$")
+    unavailable: StrictBool = False
+
+
 type RuntimePayload = (
-    HelloPayload
+    ViewerRequestPayload
+    | ViewerReplyPayload
+    | HelloPayload
     | LoadPayload
     | StartPayload
     | CommandPayload
@@ -224,6 +243,8 @@ type RuntimePayload = (
 )
 
 _PAYLOAD_TYPES: dict[RuntimeMessageKind, type[RuntimePayload]] = {
+    RuntimeMessageKind.VIEWER: ViewerRequestPayload,
+    RuntimeMessageKind.VIEWER_REPLY: ViewerReplyPayload,
     RuntimeMessageKind.HELLO: HelloPayload,
     RuntimeMessageKind.LOAD: LoadPayload,
     RuntimeMessageKind.START: StartPayload,
@@ -243,6 +264,8 @@ _LIFECYCLE_MESSAGE_KINDS = frozenset(
         RuntimeMessageKind.LOAD,
         RuntimeMessageKind.READY,
         RuntimeMessageKind.OBSERVE,
+        RuntimeMessageKind.VIEWER,
+        RuntimeMessageKind.VIEWER_REPLY,
         RuntimeMessageKind.SHUTDOWN,
     }
 )
@@ -251,6 +274,7 @@ _LIFECYCLE_OPERATION_KINDS = frozenset(
     {
         RuntimeOperationKind.HELLO,
         RuntimeOperationKind.OBSERVE,
+        RuntimeOperationKind.VIEWER,
         RuntimeOperationKind.LOAD,
         RuntimeOperationKind.SHUTDOWN,
     }

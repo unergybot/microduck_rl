@@ -160,6 +160,7 @@ EXPECTED_GOVERNED_RUNTIME_MODULES = (
     "rom/service.py",
     "rom/store.py",
     "rom/supervisor_state.py",
+    "rom/viewer.py",
 )
 
 

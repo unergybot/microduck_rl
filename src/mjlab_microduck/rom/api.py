@@ -489,6 +489,30 @@ def create_app(service: SimulatorTaskService | None, bearer_token: str) -> FastA
             raise NotReady("simulator is not ready")
         return service.robot_status()
 
+    @app.get(
+        "/v1/viewer/model", operation_id="viewerModel",
+        dependencies=[Depends(require_bearer)],
+        responses={401: {"model": Error}, 503: {"model": Error}},
+    )
+    def viewer_model():
+        return viewer_read("viewer_model")
+
+    @app.get(
+        "/v1/viewer/frame", operation_id="viewerFrame",
+        dependencies=[Depends(require_bearer)],
+        responses={401: {"model": Error}, 503: {"model": Error}},
+    )
+    def viewer_frame():
+        return viewer_read("viewer_frame")
+
+    def viewer_read(method):
+        try:
+            if service is None:
+                raise ValueError("viewer unavailable")
+            return JSONResponse(getattr(service, method)(), headers={"Cache-Control": "no-store"})
+        except Exception:
+            raise NotReady("viewer is unavailable") from None
+
     @app.post(
         "/v1/tasks",
         operation_id="createTask",

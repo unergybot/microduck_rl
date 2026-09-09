@@ -257,6 +257,31 @@ class MicroduckMujocoRuntime:
         }
         self._validate_installed_actions()
         self._reset_model_locked()
+        from .viewer import RuntimeViewer
+        self._viewer = None
+        try:
+            self._viewer = RuntimeViewer(self._model, bundle)
+        except Exception:
+            # Display assets must never make a valid control bundle unavailable.
+            pass
+
+    def viewer_model(self):
+        if self._viewer is None:
+            raise ValueError("viewer unavailable")
+        return self._viewer.model
+
+    def viewer_frame(self):
+        if self._viewer is None or not self._lock.acquire(blocking=False):
+            raise ValueError("viewer unavailable")
+        try:
+            task_id = (
+                self._active_request.taskId
+                if self._active_handle is not None and self._active_request is not None
+                else None
+            )
+            return self._viewer.sample(self._data, task_id, time.monotonic())
+        finally:
+            self._lock.release()
 
     def _safe_path(self, declared_path: str) -> Path:
         pure = PurePosixPath(declared_path)
