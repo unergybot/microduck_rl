@@ -444,7 +444,7 @@ def create_configured_app(
         reasons.append("BUNDLE_UNAVAILABLE")
     elif configuration.bearer_token:
         try:
-            bundle = load_qualified_bundle(configuration.bundle_dir)
+            bundle = load_verified_bundle(configuration.bundle_dir)
         except Exception as exc:  # noqa: BLE001 - stable, non-secret readiness boundary.
             if "qualification" in str(exc):
                 reasons.append("QUALIFICATION_UNAVAILABLE")

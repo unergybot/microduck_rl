@@ -85,7 +85,7 @@ def test_handshake_and_load_echo_exact_runtime_and_bundle_identity(
     digest = "sha256:" + "a" * 64
     bundle = SimpleNamespace(bundleDigest=digest)
     monkeypatch.setattr(
-        "mjlab_microduck.rom.runtime_child.load_qualified_bundle", lambda _root: bundle
+        "mjlab_microduck.rom.runtime_child.load_verified_bundle", lambda _root: bundle
     )
     host = RuntimeChildHost(
         child, runtime_factory=lambda _root, _bundle: FakeMicroduckRuntime()

@@ -20,7 +20,7 @@ from .action_catalog import (
     validate_code_owned_parameters,
 )
 from .contracts import PolicyBundle, TaskCreateRequest, TaskEvidence
-from .main import load_qualified_bundle, load_verified_bundle
+from .main import load_verified_bundle
 from .mujoco_runtime import MicroduckMujocoRuntime
 from .parent_death import (
     close_unrelated_fds,
@@ -792,7 +792,7 @@ class RuntimeChildHost:
                 )
                 if root is None:
                     raise ValueError
-                loader = self._bundle_loader or load_qualified_bundle
+                loader = self._bundle_loader or load_verified_bundle
                 bundle = loader(root)
                 if bundle.bundleDigest != message.payload.bundleDigest:
                     raise ValueError

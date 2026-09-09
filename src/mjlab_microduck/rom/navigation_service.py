@@ -101,6 +101,7 @@ class NavigationTaskService:
             "bundleVersion": self.service._bundle.bundleVersion,
             "bundleId": self.service._bundle.bundleId,
             "qualificationDigest": installation.qualification_digest,
+            "evaluationStatus": installation.evaluation_status,
         }
 
     def _request(self, task_id):

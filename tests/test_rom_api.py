@@ -711,6 +711,8 @@ def test_placeholder_startup_does_not_reconcile_existing_running_task(
     state_db = tmp_path / "state.sqlite3"
     store = SqliteTaskStore(state_db)
     task = _running_task(store, bundle)
+    # An actually invalid bundle must not reconcile a surviving task.
+    (bundle_dir / "microduck-policy-bundle.json").write_text("{}")
 
     create_configured_app(
         {
@@ -728,10 +730,10 @@ def test_placeholder_startup_does_not_reconcile_existing_running_task(
     ]
 
 
-def test_candidate_bundle_cannot_expose_catalog_before_qualification(
+def test_verified_candidate_exposes_catalog_without_benchmark_qualification(
     tmp_path: Path, service: SimulatorTaskService
 ):
-    """A hash-valid candidate must not expose a catalog before governed promotion."""
+    """A verified candidate exposes capabilities for simulator integration."""
     bundle_dir = tmp_path / "bundle"
     _write_verified_bundle(bundle_dir, service._bundle)
     app = create_configured_app(
@@ -747,8 +749,8 @@ def test_candidate_bundle_cannot_expose_catalog_before_qualification(
             "/v1/catalog", headers={"Authorization": "Bearer startup-token"}
         )
 
-    assert catalog.status_code == 503
-    assert catalog.json()["code"] == "NOT_READY"
+    assert catalog.status_code == 200
+    assert catalog.json()["actions"]
 
 
 def test_database_startup_failure_has_its_own_readiness_reason(
@@ -773,10 +775,7 @@ def test_database_startup_failure_has_its_own_readiness_reason(
         )
 
     assert response.json()["reasonCodes"] == [
-        "BUNDLE_UNAVAILABLE",
-        "QUALIFICATION_UNAVAILABLE",
-        "RUNTIME_UNAVAILABLE",
-        "STATE_DB_UNAVAILABLE",
+        "RUNTIME_UNAVAILABLE", "STATE_DB_UNAVAILABLE",
     ]
 
 
