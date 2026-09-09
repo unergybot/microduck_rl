@@ -146,7 +146,11 @@ class RuntimeViewer:
         self.sequence = 0
 
     def sample(self, data, task_id, now):
-        if self.frame is not None and now - self.sampled_at < 0.2:
+        if (
+            self.frame is not None
+            and self.frame["activeTaskId"] == task_id
+            and now - self.sampled_at < 0.2
+        ):
             return self.frame
         frame = dict(
             schema="MICRODUCK_VIEWER_FRAME_V1",

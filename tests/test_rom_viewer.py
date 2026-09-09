@@ -499,3 +499,58 @@ def test_control_lock_cache_replacement_cannot_rejuvenate_old_frame(tmp_path):
     finally:
         release.set()
         thread.join(1)
+
+
+@pytest.mark.parametrize("cache", ["empty", "expired", "task_changed"])
+def test_viewer_samples_after_short_control_lock_hold(tmp_path, cache):
+    import threading
+    from types import SimpleNamespace
+
+    bundle = _write_verified_bundle(tmp_path / "bundle")
+    runtime = MicroduckMujocoRuntime(tmp_path / "bundle", bundle, realtime=False)
+    previous = None if cache == "empty" else runtime.viewer_frame()
+    if cache == "expired":
+        runtime._viewer.sampled_at = time.monotonic() - 2
+    if cache == "task_changed":
+        runtime._active_request = SimpleNamespace(taskId="new-task")
+        runtime._active_handle = SimpleNamespace(taskId="new-task")
+    runtime._data.geom_xpos[0, 0] += 1
+    expected_positions = runtime._data.geom_xpos.ravel().tolist()
+    lock = runtime._lock
+    attempted, held = threading.Event(), threading.Event()
+    calls = []
+
+    class ObservedLock:
+        def acquire(self, **kwargs):
+            calls.append(kwargs)
+            acquired = lock.acquire(**kwargs)
+            if kwargs.get("blocking") is False and not acquired:
+                attempted.set()
+            return acquired
+
+        def release(self):
+            lock.release()
+
+    runtime._lock = ObservedLock()
+
+    def short_control_step():
+        with lock:
+            held.set()
+            assert attempted.wait(1)
+            time.sleep(0.002)
+
+    thread = threading.Thread(target=short_control_step)
+    thread.start()
+    assert held.wait(1)
+    try:
+        result = runtime.viewer_frame()
+        assert result is not previous
+        assert result["positions"] == expected_positions
+        assert result["activeTaskId"] == (
+            "new-task" if cache == "task_changed" else None
+        )
+        assert result["sequence"] == (1 if previous else 0)
+        assert calls == [{"blocking": False}, {"timeout": 0.01}]
+    finally:
+        attempted.set()
+        thread.join(1)
