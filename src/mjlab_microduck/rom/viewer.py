@@ -70,7 +70,7 @@ def export_meshes(model, geometry):
     for mesh in sorted({g["meshId"] for g in geometry if g["type"] == 7}):
         va, vn = int(model.mesh_vertadr[mesh]), int(model.mesh_vertnum[mesh])
         fa, fn = int(model.mesh_faceadr[mesh]), int(model.mesh_facenum[mesh])
-        if not (0 < vn * 3 <= 1_500_000 and 0 < fn * 3 <= 1_500_000):
+        if not (9 <= vn * 3 <= 1_500_000 and 0 < fn * 3 <= 1_500_000):
             raise ValueError("viewer mesh exceeds component bound")
         if (
             va < 0

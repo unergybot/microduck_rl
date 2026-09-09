@@ -239,3 +239,18 @@ def test_combined_mesh_payload_bound():
     )
     with pytest.raises(ValueError, match="meshes exceed bound"):
         export_meshes(model, [{"type": 7, "meshId": 0}, {"type": 7, "meshId": 1}])
+
+
+def test_mesh_requires_at_least_three_vertices():
+    from mjlab_microduck.rom.viewer import export_meshes
+
+    model = SimpleNamespace(
+        mesh_vertadr=[0],
+        mesh_vertnum=[2],
+        mesh_faceadr=[0],
+        mesh_facenum=[1],
+        mesh_vert=np.zeros((2, 3), dtype=np.float32),
+        mesh_face=np.array([[0, 1, 0]], dtype=np.int32),
+    )
+    with pytest.raises(ValueError, match="component bound"):
+        export_meshes(model, [{"type": 7, "meshId": 0}])
