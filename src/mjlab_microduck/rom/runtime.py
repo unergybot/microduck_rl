@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -62,6 +63,55 @@ def _bounded_metrics(metrics: Mapping[str, RuntimeMetric]) -> dict[str, RuntimeM
             "runtime metrics encoded size exceeds the bounded evidence limit"
         )
     return bounded
+
+
+# These values are recoverable exactly from the verified bundle and task seed.
+_PROVENANCE_KEYS = (
+    "bundleDigest",
+    "onnxDigest",
+    "mjcfDigest",
+    "sourceCommit",
+    "checkpoint",
+    "runIdentity",
+    "terrainIdentity",
+    "rngSeed",
+    "scenarioProfile",
+    "resetProfile",
+)
+
+
+def _provenance_digest(metrics: Mapping[str, RuntimeMetric]) -> str:
+    provenance = {key: metrics[key] for key in _PROVENANCE_KEYS}
+    payload = {"schema": "MICRODUCK_EVIDENCE_PROVENANCE_V1", **provenance}
+    return "sha256:" + hashlib.sha256(canonical_json(payload)).hexdigest()
+
+
+def compact_runtime_evidence(
+    metrics: Mapping[str, RuntimeMetric],
+) -> dict[str, RuntimeMetric]:
+    """Keep legacy evidence when it fits; bind large provenance without losing metrics."""
+    try:
+        return _bounded_metrics(metrics)
+    except ValueError:
+        compact = {
+            key: value for key, value in metrics.items() if key not in _PROVENANCE_KEYS
+        }
+        compact["provenanceDigest"] = _provenance_digest(metrics)
+        # The same byte, scalar and item bounds still apply. Never trim measurements.
+        return _bounded_metrics(compact)
+
+
+def runtime_evidence_identity_matches(metrics, expected) -> bool:
+    if "provenanceDigest" in metrics:
+        if any(key in metrics for key in _PROVENANCE_KEYS):
+            return False
+        expected = {
+            key: value for key, value in expected.items() if key not in _PROVENANCE_KEYS
+        } | {"provenanceDigest": _provenance_digest(expected)}
+    return all(
+        key in metrics and type(metrics[key]) is type(value) and metrics[key] == value
+        for key, value in expected.items()
+    )
 
 
 @dataclass(frozen=True)

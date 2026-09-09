@@ -61,6 +61,7 @@ from .runtime import (
     RuntimeHandle,
     RuntimeSample,
     canonical_tracking_mean,
+    compact_runtime_evidence,
 )
 
 _CONTROL_PERIOD_S = 0.02
@@ -1627,7 +1628,7 @@ class MicroduckMujocoRuntime:
             evidence["resetPerturbationL2Rad"] = round(
                 self._reset_perturbation_l2_rad, 8
             )
-        return evidence
+        return compact_runtime_evidence(evidence)
 
     @staticmethod
     def _finite_array(values: Any, length: int) -> NDArray[np.float64]:
