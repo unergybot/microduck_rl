@@ -270,6 +270,11 @@ class MicroduckMujocoRuntime:
             raise ValueError("viewer unavailable")
         return self._viewer.model
 
+    def viewer_model_text(self):
+        if self._viewer is None:
+            raise ValueError("viewer unavailable")
+        return self._viewer.model_text
+
     def viewer_frame(self):
         if self._viewer is None or not self._lock.acquire(blocking=False):
             raise ValueError("viewer unavailable")

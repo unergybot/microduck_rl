@@ -766,7 +766,7 @@ class RuntimeChildHost:
                     if entry is None:
                         entry = (
                             uuid4().hex,
-                            encode_display(self._runtime.viewer_model()),
+                            self._runtime.viewer_model_text(),
                         )
                 else:
                     entry = (

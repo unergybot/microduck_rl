@@ -174,7 +174,8 @@ def test_child_viewer_failure_does_not_touch_active_task_and_chunks_are_stable(
         host._handle = object()
         host._task_id = "1" * 32
         host._runtime = SimpleNamespace(
-            viewer_model=lambda: {"geometry": ["x" * 23999] * 4}
+            viewer_model=lambda: {"geometry": ["x" * 23999] * 4},
+            viewer_model_text=lambda: json.dumps({"geometry": ["x" * 23999] * 4}),
         )
 
         def read(offset=0, token=None, sequence=1):
@@ -348,3 +349,41 @@ raise SystemExit(host.run())
         supervisor.stop(request.taskId, "USER_CANCELLED")
     finally:
         supervisor.close()
+
+
+def test_first_child_model_read_uses_preencoded_geometry(tmp_path, monkeypatch):
+    import socket
+    from mjlab_microduck.rom import viewer
+    from mjlab_microduck.rom.runtime_child import RuntimeChildHost
+    from mjlab_microduck.rom.process_protocol import (
+        RuntimeMessage,
+        ViewerRequestPayload,
+        decode_packet,
+    )
+
+    bundle = _write_verified_bundle(tmp_path / "bundle")
+    runtime = MicroduckMujocoRuntime(tmp_path / "bundle", bundle, realtime=False)
+    encoded = runtime._viewer.model_text
+
+    def prohibit_encoding(*args, **kwargs):
+        raise AssertionError("static geometry must be serialized during initialization")
+
+    monkeypatch.setattr(viewer, "encode_display", prohibit_encoding)
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    host = RuntimeChildHost(child)
+    host._runtime = runtime
+    try:
+        message = RuntimeMessage(
+            kind="VIEWER",
+            generation=1,
+            operationSequence=1,
+            payload=ViewerRequestPayload(resource="model"),
+        )
+        assert host._handle_message(message)
+        response = decode_packet(parent.recv(65537)).payload
+        assert not response.unavailable
+        assert response.text == encoded[: viewer.CHUNK_CHARS]
+        assert response.total == len(encoded)
+    finally:
+        parent.close()
+        child.close()
