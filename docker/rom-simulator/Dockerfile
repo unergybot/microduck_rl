@@ -42,6 +42,9 @@ COPY src/mjlab_microduck/rom/__init__.py \
     src/mjlab_microduck/rom/bundle.py \
     src/mjlab_microduck/rom/contracts.py \
     src/mjlab_microduck/rom/main.py \
+    src/mjlab_microduck/rom/navigation_api.py \
+    src/mjlab_microduck/rom/navigation_contracts.py \
+    src/mjlab_microduck/rom/navigation_service.py \
     src/mjlab_microduck/rom/mirroring.py \
     src/mjlab_microduck/rom/model_semantics.py \
     src/mjlab_microduck/rom/mujoco_runtime.py \
@@ -60,6 +63,13 @@ COPY src/mjlab_microduck/rom/__init__.py \
     src/mjlab_microduck/rom/store.py \
     src/mjlab_microduck/rom/supervisor_state.py \
     /app/src/mjlab_microduck/rom/
+COPY src/mjlab_microduck/rom/navigation/__init__.py \
+    src/mjlab_microduck/rom/navigation/environment.py \
+    src/mjlab_microduck/rom/navigation/follower.py \
+    src/mjlab_microduck/rom/navigation/grid.py \
+    src/mjlab_microduck/rom/navigation/installation.py \
+    src/mjlab_microduck/rom/navigation/planner.py \
+    /app/src/mjlab_microduck/rom/navigation/
 COPY schemas/microduck-policy-bundle-v1.schema.json \
     schemas/microduck-simulator-api-v1.openapi.yaml \
     schemas/microduck-v1-portability-fixtures.json \
