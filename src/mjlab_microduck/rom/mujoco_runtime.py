@@ -283,7 +283,7 @@ class MicroduckMujocoRuntime:
             raise ValueError("viewer unavailable")
         if not self._lock.acquire(blocking=False):
             # Control owns the model. Reuse only a recent immutable display
-            # snapshot; never wait for physics or refresh its timestamp/sequence.
+            # snapshot without refreshing its timestamp or sequence.
             frame = self._viewer.frame
             request, handle = self._active_request, self._active_handle
             task_id = request.taskId if request is not None else None
@@ -297,7 +297,10 @@ class MicroduckMujocoRuntime:
                 and self._active_handle is handle
             ):
                 return frame
-            raise ValueError("viewer unavailable")
+            # A short control step may finish before the next display poll.
+            # Bound only the reader's wait; retain the existing sample lock scope.
+            if not self._lock.acquire(timeout=0.01):
+                raise ValueError("viewer unavailable")
         try:
             task_id = (
                 self._active_request.taskId
