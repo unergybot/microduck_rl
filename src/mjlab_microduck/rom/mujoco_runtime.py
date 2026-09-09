@@ -279,7 +279,24 @@ class MicroduckMujocoRuntime:
         return self._viewer.model_text
 
     def viewer_frame(self):
-        if self._viewer is None or not self._lock.acquire(blocking=False):
+        if self._viewer is None:
+            raise ValueError("viewer unavailable")
+        if not self._lock.acquire(blocking=False):
+            # Control owns the model. Reuse only a recent immutable display
+            # snapshot; never wait for physics or refresh its timestamp/sequence.
+            frame = self._viewer.frame
+            request, handle = self._active_request, self._active_handle
+            task_id = request.taskId if request is not None else None
+            if (
+                frame is not None
+                and 0 <= time.monotonic() - self._viewer.sampled_at < 1.0
+                and (handle.taskId if handle is not None else None) == task_id
+                and frame["activeTaskId"] == task_id
+                and self._viewer.frame is frame
+                and self._active_request is request
+                and self._active_handle is handle
+            ):
+                return frame
             raise ValueError("viewer unavailable")
         try:
             task_id = (
