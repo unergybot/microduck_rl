@@ -1,0 +1,525 @@
+{
+  "$defs": {
+    "Area": {
+      "additionalProperties": false,
+      "properties": {
+        "minX": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "Minx",
+          "type": "number"
+        },
+        "minY": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "Miny",
+          "type": "number"
+        },
+        "maxX": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "Maxx",
+          "type": "number"
+        },
+        "maxY": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "Maxy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minX",
+        "minY",
+        "maxX",
+        "maxY"
+      ],
+      "title": "Area",
+      "type": "object"
+    },
+    "Binding": {
+      "additionalProperties": false,
+      "properties": {
+        "robotId": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Robotid",
+          "type": "string"
+        },
+        "targetId": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Targetid",
+          "type": "string"
+        },
+        "runtimeSession": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Runtimesession",
+          "type": "string"
+        }
+      },
+      "required": [
+        "robotId",
+        "targetId",
+        "runtimeSession"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "Environment": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "rom.microduck.environment.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "provenance": {
+          "const": "SIM_GROUND_TRUTH",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "capturedAt": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Capturedat",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "mapFrame": {
+          "const": "map",
+          "title": "Mapframe",
+          "type": "string"
+        },
+        "bodyFrame": {
+          "const": "body",
+          "title": "Bodyframe",
+          "type": "string"
+        },
+        "transformRevision": {
+          "const": "xy-forward-left-z-up-v1",
+          "title": "Transformrevision",
+          "type": "string"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "scene": {
+          "$ref": "#/$defs/Scene"
+        },
+        "mapDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Mapdigest",
+          "type": "string"
+        },
+        "bundleDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Bundledigest",
+          "type": "string"
+        },
+        "navigationProfileDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Navigationprofiledigest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "binding",
+        "provenance",
+        "capturedAt",
+        "sequence",
+        "mapFrame",
+        "bodyFrame",
+        "transformRevision",
+        "pose",
+        "valid",
+        "scene",
+        "mapDigest",
+        "bundleDigest",
+        "navigationProfileDigest"
+      ],
+      "title": "Environment",
+      "type": "object"
+    },
+    "NavigationLeaseRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "taskId": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Taskid",
+          "type": "string"
+        },
+        "proposalDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Proposaldigest",
+          "type": "string"
+        },
+        "sequence": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "title": "Sequence",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "taskId",
+        "proposalDigest",
+        "sequence"
+      ],
+      "title": "NavigationLeaseRequest",
+      "type": "object"
+    },
+    "NavigationProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "robotRadiusM": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Robotradiusm",
+          "type": "number"
+        },
+        "clearanceM": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Clearancem",
+          "type": "number"
+        },
+        "gridResolutionM": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Gridresolutionm",
+          "type": "number"
+        },
+        "maxSpeedMps": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.1,
+          "title": "Maxspeedmps",
+          "type": "number"
+        },
+        "maxYawRateRadps": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.5,
+          "title": "Maxyawrateradps",
+          "type": "number"
+        },
+        "poseFreshnessMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Posefreshnessms",
+          "type": "integer"
+        },
+        "arrivalToleranceM": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.2,
+          "title": "Arrivaltolerancem",
+          "type": "number"
+        },
+        "headingToleranceRad": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.5,
+          "title": "Headingtolerancerad",
+          "type": "number"
+        },
+        "settleMs": {
+          "maximum": 5000,
+          "minimum": 200,
+          "title": "Settlems",
+          "type": "integer"
+        },
+        "stableSpeedMps": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.05,
+          "title": "Stablespeedmps",
+          "type": "number"
+        },
+        "stableYawRateRadps": {
+          "exclusiveMinimum": 0,
+          "maximum": 0.1,
+          "title": "Stableyawrateradps",
+          "type": "number"
+        },
+        "deadlineMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 600000,
+          "title": "Deadlinems",
+          "type": "integer"
+        },
+        "leaseMs": {
+          "maximum": 2000,
+          "minimum": 500,
+          "title": "Leasems",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "robotRadiusM",
+        "clearanceM",
+        "gridResolutionM",
+        "maxSpeedMps",
+        "maxYawRateRadps",
+        "poseFreshnessMs",
+        "arrivalToleranceM",
+        "headingToleranceRad",
+        "settleMs",
+        "stableSpeedMps",
+        "stableYawRateRadps",
+        "deadlineMs",
+        "leaseMs"
+      ],
+      "title": "NavigationProfile",
+      "type": "object"
+    },
+    "NavigationProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "ROM_MICRODUCK_NAVIGATION_PROPOSAL_V2",
+          "title": "Schema",
+          "type": "string"
+        },
+        "actionCode": {
+          "const": "NAVIGATE_TO_LANDMARK",
+          "title": "Actioncode",
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "landmarkId": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Landmarkid",
+          "type": "string"
+        },
+        "destination": {
+          "$ref": "#/$defs/Pose"
+        },
+        "scene": {
+          "$ref": "#/$defs/Scene"
+        },
+        "mapDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Mapdigest",
+          "type": "string"
+        },
+        "bundleVersion": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Bundleversion",
+          "type": "string"
+        },
+        "bundleDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Bundledigest",
+          "type": "string"
+        },
+        "navigationProfileDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Navigationprofiledigest",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/NavigationProfile"
+        },
+        "safeStopBehavior": {
+          "const": "ZERO_THEN_HOLD",
+          "title": "Safestopbehavior",
+          "type": "string"
+        },
+        "planning": {
+          "$ref": "#/$defs/PlanningReferences"
+        }
+      },
+      "required": [
+        "schema",
+        "actionCode",
+        "binding",
+        "landmarkId",
+        "destination",
+        "scene",
+        "mapDigest",
+        "bundleVersion",
+        "bundleDigest",
+        "navigationProfileDigest",
+        "profile",
+        "safeStopBehavior",
+        "planning"
+      ],
+      "title": "NavigationProposal",
+      "type": "object"
+    },
+    "NavigationTaskRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "MICRODUCK_NAVIGATION_TASK_V2",
+          "title": "Schema",
+          "type": "string"
+        },
+        "taskId": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Taskid",
+          "type": "string"
+        },
+        "proposalDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Proposaldigest",
+          "type": "string"
+        },
+        "proposal": {
+          "$ref": "#/$defs/NavigationProposal"
+        },
+        "requestedBy": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Requestedby",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "taskId",
+        "proposalDigest",
+        "proposal",
+        "requestedBy"
+      ],
+      "title": "NavigationTaskRequest",
+      "type": "object"
+    },
+    "PlanningReferences": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "MANUAL",
+            "TAIROS"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "requestId": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Requestid",
+          "type": "string"
+        },
+        "inputSnapshotDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Inputsnapshotdigest",
+          "type": "string"
+        },
+        "providerResultRef": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Providerresultref"
+        }
+      },
+      "required": [
+        "source",
+        "requestId",
+        "inputSnapshotDigest"
+      ],
+      "title": "PlanningReferences",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 10000,
+          "minimum": -10000,
+          "title": "Y",
+          "type": "number"
+        },
+        "yaw": {
+          "maximum": 3.141592653589793,
+          "minimum": -3.141592653589793,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "yaw"
+      ],
+      "title": "Pose",
+      "type": "object"
+    },
+    "Scene": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Revision",
+          "type": "string"
+        },
+        "area": {
+          "$ref": "#/$defs/Area"
+        },
+        "obstacles": {
+          "items": {
+            "$ref": "#/$defs/Area"
+          },
+          "maxItems": 128,
+          "title": "Obstacles",
+          "type": "array"
+        },
+        "landmarks": {
+          "maxProperties": 100,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z0-9._:-]{1,128}$": {
+              "$ref": "#/$defs/Pose"
+            }
+          },
+          "title": "Landmarks",
+          "type": "object"
+        }
+      },
+      "required": [
+        "revision",
+        "area",
+        "obstacles",
+        "landmarks"
+      ],
+      "title": "Scene",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Environment"
+    },
+    {
+      "$ref": "#/$defs/NavigationProposal"
+    },
+    {
+      "$ref": "#/$defs/NavigationTaskRequest"
+    },
+    {
+      "$ref": "#/$defs/NavigationLeaseRequest"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MicroDuck navigation V2 request and environment contracts"
+}

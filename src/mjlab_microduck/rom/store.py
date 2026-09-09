@@ -97,6 +97,16 @@ class SqliteTaskStore:
         with self._connect() as connection:
             return self._get_in_connection(connection, task_id, required=False)
 
+    def request_content(self, task_id: str):
+        with self._connect() as connection:
+            row = connection.execute("SELECT request_canonical_json FROM task WHERE task_id = ?", (task_id,)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def command_sequence(self, task_id: str):
+        with self._connect() as connection:
+            row = connection.execute("SELECT command_sequence FROM task WHERE task_id = ?", (task_id,)).fetchone()
+            return row[0] if row else None
+
     def transition(
         self,
         task_id: str,

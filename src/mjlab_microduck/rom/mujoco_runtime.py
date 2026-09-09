@@ -61,6 +61,7 @@ from .runtime import (
     RuntimeHandle,
     RuntimeSample,
     canonical_tracking_mean,
+    compact_runtime_evidence,
 )
 
 _CONTROL_PERIOD_S = 0.02
@@ -128,8 +129,12 @@ class MicroduckMujocoRuntime:
         *,
         realtime: bool = True,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        _navigation_candidate=None,
     ) -> None:
         self._root = Path(bundle_root).resolve()
+        self._navigation_installation = None
+        self._navigator = None
+        self._navigation_result = None
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -198,7 +203,35 @@ class MicroduckMujocoRuntime:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
         model_path = snapshot_root / bundle.model.path
+        from .navigation.installation import load as load_navigation
+
+        try:
+            if _navigation_candidate is not None and realtime:
+                raise ValueError("candidate qualification requires offline stepping")
+            self._navigation_installation = _navigation_candidate or load_navigation(
+                self._root, bundle.bundleDigest
+            )
+        except (ValueError, OSError):
+            pass
+        if self._navigation_installation is not None:
+            from .navigation.environment import add_geometry
+
+            add_geometry(model_path, self._navigation_installation.scene)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        if self._navigation_installation is not None:
+            # An unknown fixed collider would invalidate the approved map.
+            for geom in range(self._model.ngeom):
+                static = self._model.body_weldid[self._model.geom_bodyid[geom]] == 0
+                colliding = (
+                    self._model.geom_contype[geom] or self._model.geom_conaffinity[geom]
+                )
+                if (
+                    static
+                    and colliding
+                    and self._model.geom_type[geom] != mujoco.mjtGeom.mjGEOM_PLANE
+                ):
+                    self._navigation_installation = None
+                    break
         self._data = mujoco.MjData(self._model)
         self._configure_model_addresses()
         self._validate_action_contract_semantics()
@@ -658,6 +691,23 @@ class MicroduckMujocoRuntime:
             raise ValueError("runtime action does not match the installed bundle")
         if action.availability != "AVAILABLE" or action.policyRef not in self._sessions:
             raise ValueError("runtime action has no verified policy")
+        navigation = getattr(request, "navigation", None)
+        if navigation is not None:
+            from .navigation_contracts import digest
+
+            installation = self._navigation_installation
+            if (
+                installation is None
+                or navigation.proposal.mapDigest != digest(installation.scene)
+                or navigation.proposal.navigationProfileDigest
+                != digest(installation.profile)
+                or navigation.proposal.bundleDigest != self._bundle.bundleDigest
+                or navigation.taskId != request.taskId
+                or navigation.proposal.binding.robotId != installation.robot_id
+                or navigation.proposal.binding.targetId != installation.target_id
+                or action.actionCode != "WALK_VELOCITY"
+            ):
+                raise ValueError("navigation runtime qualification mismatch")
         validate_code_owned_parameters(action.actionCode, request.parameters)
         validate_code_owned_lease(action.actionCode, request.leaseMs)
         validate_action_definition_envelope(action)
@@ -704,7 +754,29 @@ class MicroduckMujocoRuntime:
             self._applied_seed = request.scenario.seed
             self._rng = np.random.default_rng(self._applied_seed)
             spec = ACTION_RUNTIME_SPECS[action.actionCode]
-            self._reset_model_locked(self._rng, spec.reset_profile)
+            navigation = getattr(request, "navigation", None)
+            for geom in range(self._model.ngeom):
+                name = (
+                    mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
+                )
+                if name.startswith("rom_navigation_obstacle_"):
+                    enabled = int(navigation is not None)
+                    self._model.geom_contype[geom] = enabled
+                    self._model.geom_conaffinity[geom] = enabled
+                    self._model.geom_rgba[geom, 3] = enabled
+            if navigation is None:
+                self._reset_model_locked(self._rng, spec.reset_profile)
+            self._navigator = None
+            self._navigation_result = None
+            if navigation is not None:
+                from .navigation.follower import Navigator
+
+                self._navigator = Navigator(
+                    navigation.proposal.scene,
+                    navigation.proposal.profile,
+                    navigation.proposal.landmarkId,
+                    self._clock(),
+                )
             with self._emergency_guard:
                 self._reject_emergency_publication_locked(start_generation)
                 self._active_handle = RuntimeHandle(taskId=request.taskId)
@@ -785,6 +857,7 @@ class MicroduckMujocoRuntime:
                 if self._emergency_event.is_set():
                     raise RuntimeError("runtime requires restart after emergency stop")
                 self._require_handle(handle)
+                self._navigator = None
                 assert self._active_action is not None
                 command_generation = self._emergency_generation
                 requested_command, command, limiting_reason = self._command_for(
@@ -857,6 +930,11 @@ class MicroduckMujocoRuntime:
                 self._disable_actuators_locked()
             else:
                 self._hold_current_position_locked()
+            if getattr(self._active_request, "navigation", None) is not None:
+                self._requested_command = DeploymentCommand.zero()
+                self._command = DeploymentCommand.zero()
+                self._navigator = None
+                metrics["stoppedCommandConfirmed"] = True
             evidence = RuntimeEvidence(metrics=metrics, stopReason=reason)
             stopped_task_id = self._active_handle.taskId
             self._active_handle = None
@@ -1003,6 +1081,50 @@ class MicroduckMujocoRuntime:
                         else None
                     )
                 self._require_finite_simulation_state()
+                if self._navigator is not None:
+                    from .navigation_contracts import Pose
+
+                    position = self._base_position()
+                    now = self._clock()
+                    result = self._navigator.update(
+                        Pose(
+                            x=float(position[0]),
+                            y=float(position[1]),
+                            yaw=self._yaw_rad(),
+                        ),
+                        now=now,
+                        captured=now,
+                        speed=float(
+                            np.linalg.norm(
+                                self._data.qvel[
+                                    self._free_qvel_address : self._free_qvel_address
+                                    + 2
+                                ]
+                            )
+                        ),
+                        yaw_rate=float(self._base_angular_velocity()[2]),
+                    )
+                    self._navigation_result = result
+                    self._requested_command, self._command, self._limiting_reason = (
+                        self._command_for(
+                            "WALK_VELOCITY",
+                            {
+                                "vxMps": result.vx,
+                                "vyMps": 0.0,
+                                "yawRateRadps": result.yaw,
+                            },
+                            self._active_action,
+                        )
+                    )
+                    if result.reason or result.arrived:
+                        self._terminal_state = (
+                            "SUCCEEDED" if result.arrived else "FAILED"
+                        )
+                        self._terminal_reason = (
+                            "ARRIVED" if result.arrived else result.reason
+                        )
+                        self._stop_event.set()
+                        return
                 state = DeploymentState(
                     base_angular_velocity_radps=self._base_angular_velocity(),
                     base_orientation_wxyz=self._base_quaternion_wxyz(),
@@ -1317,9 +1439,7 @@ class MicroduckMujocoRuntime:
 
     def _squat_reference_twist_locked(self) -> NDArray[np.float32]:
         angle = 2.0 * math.pi * self._squat_phase
-        return np.asarray(
-            [math.cos(angle), math.sin(angle), 0.0], dtype=np.float32
-        )
+        return np.asarray([math.cos(angle), math.sin(angle), 0.0], dtype=np.float32)
 
     def _squat_return_pose_error_locked(self) -> float:
         delta = self._encoder_positions() - DEFAULT_JOINT_POSE
@@ -1419,6 +1539,18 @@ class MicroduckMujocoRuntime:
             "steps": self._step_count,
             "loopOverruns": self._loop_overruns,
         }
+        if getattr(self._active_request, "navigation", None) is not None:
+            result = self._navigation_result
+            return {
+                "provenance": "SIM_GROUND_TRUTH",
+                "x": round(float(base_position[0]), 6),
+                "y": round(float(base_position[1]), 6),
+                "yaw": round(self._yaw_rad(), 6),
+                "arrived": bool(result and result.arrived),
+                "fallen": self._fallen,
+                "steps": self._step_count,
+                "durationS": round(self._duration_locked(), 6),
+            }
         if self._active_action.actionCode in {
             "WALK_VELOCITY",
             "VELSTAND_VELOCITY",
@@ -1496,7 +1628,7 @@ class MicroduckMujocoRuntime:
             evidence["resetPerturbationL2Rad"] = round(
                 self._reset_perturbation_l2_rad, 8
             )
-        return evidence
+        return compact_runtime_evidence(evidence)
 
     @staticmethod
     def _finite_array(values: Any, length: int) -> NDArray[np.float64]:

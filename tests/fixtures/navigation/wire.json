@@ -1,0 +1,146 @@
+{
+  "environment": {
+    "schema": "rom.microduck.environment.v1",
+    "binding": {
+      "robotId": "microduck-sim",
+      "targetId": "1",
+      "runtimeSession": "fixture-session"
+    },
+    "provenance": "SIM_GROUND_TRUTH",
+    "capturedAt": "2026-09-08T00:00:00Z",
+    "sequence": 1,
+    "mapFrame": "map",
+    "bodyFrame": "body",
+    "transformRevision": "xy-forward-left-z-up-v1",
+    "pose": {
+      "x": 0.0,
+      "y": 0.0,
+      "yaw": 0.0
+    },
+    "valid": true,
+    "scene": {
+      "revision": "microduck-navigation-flat-v1",
+      "area": {
+        "minX": -1.0,
+        "minY": -1.0,
+        "maxX": 2.0,
+        "maxY": 2.0
+      },
+      "obstacles": [
+        {
+          "minX": 0.4,
+          "minY": -0.1,
+          "maxX": 0.6,
+          "maxY": 0.3
+        }
+      ],
+      "landmarks": {
+        "home": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw": 0.0
+        },
+        "desk": {
+          "x": 1.0,
+          "y": 0.0,
+          "yaw": 0.0
+        },
+        "door": {
+          "x": 0.0,
+          "y": 1.0,
+          "yaw": 1.5707963267948966
+        }
+      }
+    },
+    "mapDigest": "sha256:bf7cc8cd0414d9cdfa5b61d77a7c54fc51639f8aa047d3b00ae19cf60cf88775",
+    "bundleDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "navigationProfileDigest": "sha256:bfe633c64b93ef6c9b27bdebb40a28d48490b575f06950d59910c59727dd40e7"
+  },
+  "task": {
+    "schema": "MICRODUCK_NAVIGATION_TASK_V2",
+    "taskId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "proposalDigest": "sha256:6c280b5efbe94eb84ab013c14a5d9c58ceaf2478a9db69c1567610ab3de0fd66",
+    "proposal": {
+      "schema": "ROM_MICRODUCK_NAVIGATION_PROPOSAL_V2",
+      "actionCode": "NAVIGATE_TO_LANDMARK",
+      "binding": {
+        "robotId": "microduck-sim",
+        "targetId": "1",
+        "runtimeSession": "fixture-session"
+      },
+      "landmarkId": "desk",
+      "destination": {
+        "x": 1.0,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "scene": {
+        "revision": "microduck-navigation-flat-v1",
+        "area": {
+          "minX": -1.0,
+          "minY": -1.0,
+          "maxX": 2.0,
+          "maxY": 2.0
+        },
+        "obstacles": [
+          {
+            "minX": 0.4,
+            "minY": -0.1,
+            "maxX": 0.6,
+            "maxY": 0.3
+          }
+        ],
+        "landmarks": {
+          "home": {
+            "x": 0.0,
+            "y": 0.0,
+            "yaw": 0.0
+          },
+          "desk": {
+            "x": 1.0,
+            "y": 0.0,
+            "yaw": 0.0
+          },
+          "door": {
+            "x": 0.0,
+            "y": 1.0,
+            "yaw": 1.5707963267948966
+          }
+        }
+      },
+      "mapDigest": "sha256:bf7cc8cd0414d9cdfa5b61d77a7c54fc51639f8aa047d3b00ae19cf60cf88775",
+      "bundleVersion": "1.0.1",
+      "bundleDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "navigationProfileDigest": "sha256:bfe633c64b93ef6c9b27bdebb40a28d48490b575f06950d59910c59727dd40e7",
+      "profile": {
+        "robotRadiusM": 0.15,
+        "clearanceM": 0.05,
+        "gridResolutionM": 0.05,
+        "maxSpeedMps": 0.05,
+        "maxYawRateRadps": 0.2,
+        "poseFreshnessMs": 200,
+        "arrivalToleranceM": 0.08,
+        "headingToleranceRad": 0.15,
+        "settleMs": 500,
+        "stableSpeedMps": 0.02,
+        "stableYawRateRadps": 0.05,
+        "deadlineMs": 180000,
+        "leaseMs": 1000
+      },
+      "safeStopBehavior": "ZERO_THEN_HOLD",
+      "planning": {
+        "source": "MANUAL",
+        "requestId": "fixture",
+        "inputSnapshotDigest": "sha256:1f41c04858c2d7af14b8e3c4a1bbc29f12f5c0a982bd880dbe4c77e53d1180dd",
+        "providerResultRef": null
+      }
+    },
+    "requestedBy": "operator"
+  },
+  "lease": {
+    "taskId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "proposalDigest": "sha256:6c280b5efbe94eb84ab013c14a5d9c58ceaf2478a9db69c1567610ab3de0fd66",
+    "sequence": 1
+  },
+  "canonicalProposal": "{\"actionCode\":\"NAVIGATE_TO_LANDMARK\",\"binding\":{\"robotId\":\"microduck-sim\",\"runtimeSession\":\"fixture-session\",\"targetId\":\"1\"},\"bundleDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"bundleVersion\":\"1.0.1\",\"destination\":{\"x\":1,\"y\":0,\"yaw\":0},\"landmarkId\":\"desk\",\"mapDigest\":\"sha256:bf7cc8cd0414d9cdfa5b61d77a7c54fc51639f8aa047d3b00ae19cf60cf88775\",\"navigationProfileDigest\":\"sha256:bfe633c64b93ef6c9b27bdebb40a28d48490b575f06950d59910c59727dd40e7\",\"planning\":{\"inputSnapshotDigest\":\"sha256:1f41c04858c2d7af14b8e3c4a1bbc29f12f5c0a982bd880dbe4c77e53d1180dd\",\"providerResultRef\":null,\"requestId\":\"fixture\",\"source\":\"MANUAL\"},\"profile\":{\"arrivalToleranceM\":0.08,\"clearanceM\":0.05,\"deadlineMs\":180000,\"gridResolutionM\":0.05,\"headingToleranceRad\":0.15,\"leaseMs\":1000,\"maxSpeedMps\":0.05,\"maxYawRateRadps\":0.2,\"poseFreshnessMs\":200,\"robotRadiusM\":0.15,\"settleMs\":500,\"stableSpeedMps\":0.02,\"stableYawRateRadps\":0.05},\"safeStopBehavior\":\"ZERO_THEN_HOLD\",\"scene\":{\"area\":{\"maxX\":2,\"maxY\":2,\"minX\":-1,\"minY\":-1},\"landmarks\":{\"desk\":{\"x\":1,\"y\":0,\"yaw\":0},\"door\":{\"x\":0,\"y\":1,\"yaw\":1.5707963267948966},\"home\":{\"x\":0,\"y\":0,\"yaw\":0}},\"obstacles\":[{\"maxX\":0.6,\"maxY\":0.3,\"minX\":0.4,\"minY\":-0.1}],\"revision\":\"microduck-navigation-flat-v1\"},\"schema\":\"ROM_MICRODUCK_NAVIGATION_PROPOSAL_V2\"}"
+}

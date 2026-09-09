@@ -41,7 +41,7 @@ from .process_supervisor import (
     SupervisorTaskTerminalized,
     SupervisorUnavailable,
 )
-from .runtime import canonical_tracking_mean
+from .runtime import canonical_tracking_mean, runtime_evidence_identity_matches
 from .runtime_identity import runtime_revision
 
 QUALIFICATION_REPORT_PATH = "qualification/qualification-v1.json"
@@ -945,12 +945,7 @@ def _qualification_rollout_from_terminal(
         bundle.bundleDigest,
         policy.digest,
         bundle.model.digest,
-    ) or any(
-        key not in metrics
-        or type(metrics[key]) is not type(value)
-        or metrics[key] != value
-        for key, value in expected_metrics.items()
-    ):
+    ) or not runtime_evidence_identity_matches(metrics, expected_metrics):
         raise ValueError("qualification runtime evidence identity is invalid")
     if stop_reason == "MAX_STEPS_REACHED":
         expected_horizon_outcome = (

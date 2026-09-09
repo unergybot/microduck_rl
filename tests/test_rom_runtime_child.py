@@ -85,7 +85,7 @@ def test_handshake_and_load_echo_exact_runtime_and_bundle_identity(
     digest = "sha256:" + "a" * 64
     bundle = SimpleNamespace(bundleDigest=digest)
     monkeypatch.setattr(
-        "mjlab_microduck.rom.runtime_child.load_qualified_bundle", lambda _root: bundle
+        "mjlab_microduck.rom.runtime_child.load_verified_bundle", lambda _root: bundle
     )
     host = RuntimeChildHost(
         child, runtime_factory=lambda _root, _bundle: FakeMicroduckRuntime()
@@ -114,6 +114,17 @@ def test_handshake_and_load_echo_exact_runtime_and_bundle_identity(
     assert ready.payload.runtimeRevision == runtime_revision()
     assert ready.payload.bundleDigest == digest
     assert (ready.generation, ready.operationSequence) == (4, 2)
+    observed = _exchange(
+        parent,
+        RuntimeMessage(
+            kind="OBSERVE", generation=4, operationSequence=3, taskId=None, payload={}
+        ),
+    )
+    assert observed.kind is RuntimeMessageKind.OBSERVE
+    assert (
+        observed.payload.status.basePositionM
+        == FakeMicroduckRuntime().status().basePositionM
+    )
     parent.close()
     thread.join(timeout=1)
 
@@ -125,10 +136,10 @@ def test_wrong_runtime_revision_returns_bounded_error_then_exits() -> None:
             sys.executable,
             "-m",
             "mjlab_microduck.rom.runtime_child",
-                "--socket-fd",
-                str(child.fileno()),
-                "--expected-parent-pid",
-                str(os.getpid()),
+            "--socket-fd",
+            str(child.fileno()),
+            "--expected-parent-pid",
+            str(os.getpid()),
         ],
         pass_fds=(child.fileno(),),
     )
@@ -608,9 +619,7 @@ def test_failed_completion_terminal_send_retires_transport(monkeypatch) -> None:
     parent.close()
 
 
-@pytest.mark.parametrize(
-    "mode", ["blocked-sample", "blocked-completion-cleanup"]
-)
+@pytest.mark.parametrize("mode", ["blocked-sample", "blocked-completion-cleanup"])
 def test_real_child_retires_blocked_fake_native_work_without_injected_lease(
     mode: str,
 ) -> None:
@@ -638,9 +647,9 @@ def test_real_child_retires_blocked_fake_native_work_without_injected_lease(
         parent.close()
 
 
-def _active_host(**host_kwargs) -> tuple[
-    RuntimeChildHost, FakeMicroduckRuntime, socket.socket, threading.Thread
-]:
+def _active_host(
+    **host_kwargs,
+) -> tuple[RuntimeChildHost, FakeMicroduckRuntime, socket.socket, threading.Thread]:
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     runtime = FakeMicroduckRuntime()
     host = RuntimeChildHost(child, **host_kwargs)
@@ -1000,10 +1009,10 @@ def test_sigterm_wakes_child_and_extra_inherited_fd_is_closed() -> None:
             sys.executable,
             "-m",
             "mjlab_microduck.rom.runtime_child",
-                "--socket-fd",
-                str(child.fileno()),
-                "--expected-parent-pid",
-                str(os.getpid()),
+            "--socket-fd",
+            str(child.fileno()),
+            "--expected-parent-pid",
+            str(os.getpid()),
         ],
         pass_fds=(child.fileno(), extra_a.fileno()),
     )

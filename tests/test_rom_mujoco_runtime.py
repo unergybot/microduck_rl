@@ -2388,10 +2388,10 @@ def test_stand_uses_trained_sitting_reset_fixed_goal_and_settled_completion(
     assert evidence.metrics["settledJointSpeedMaxRadps"] <= 0.5
 
 
-def test_configured_app_rejects_candidate_and_composes_promoted_runtime(
+def test_configured_app_accepts_verified_candidate_and_promoted_runtime(
     tmp_path: Path,
 ) -> None:
-    """Hash-valid candidate bytes must never become executable before qualification."""
+    """Simulator integration accepts compatible verified candidates without benchmark promotion."""
     candidate_root = tmp_path / "candidate"
     candidate = _write_verified_bundle(candidate_root)
     state_dir = tmp_path / "state"
@@ -2405,7 +2405,10 @@ def test_configured_app_rejects_candidate_and_composes_promoted_runtime(
             "MICRODUCK_ROM_PORT": "8000",
         }
     )
-    assert candidate_app.state.readiness_reason_codes == ["QUALIFICATION_UNAVAILABLE"]
+    assert candidate_app.state.readiness_reason_codes == []
+    assert candidate_app.state.task_service is not None
+    with TestClient(candidate_app):
+        pass
 
     configuration = ReleaseConfiguration(
         release="1.0.1",

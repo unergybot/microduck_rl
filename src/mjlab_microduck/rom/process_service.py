@@ -294,7 +294,13 @@ class SimulatorTaskService:
             active.stop_claimed = True
         return self._request_stop(active, "CANCELLED")
 
-    def command(self, task_id: str, command: TaskCommandRequest):
+    def observe_navigation(self):
+        return self._supervisor.observe()
+
+    def runtime_generation(self):
+        return self._supervisor.snapshot().generation
+
+    def command(self, task_id: str, command: TaskCommandRequest, *, navigation=False):
         self._require_motion_ready(allow_running=True)
         owner = False
         with self._lock:
@@ -307,6 +313,14 @@ class SimulatorTaskService:
                 or not active.continuous
             ):
                 raise InvalidParameters("task does not accept continuous commands")
+            is_navigation = hasattr(active.request, "navigation")
+            if is_navigation != navigation:
+                raise InvalidParameters("task protocol mismatch")
+            if is_navigation and (
+                command.parameters != active.request.parameters
+                or command.leaseMs != active.request.leaseMs
+            ):
+                raise InvalidParameters("navigation authorization cannot change motion")
             if snapshot.state != "RUNNING" or active.stop_claimed:
                 raise InvalidParameters("task is not running")
             if (
@@ -618,9 +632,7 @@ class SimulatorTaskService:
             if current.state in TERMINAL:
                 pending = active.pending_command
                 if pending is not None and not pending.done.is_set():
-                    pending.error = RuntimeException(
-                        "task terminalized during command"
-                    )
+                    pending.error = RuntimeException("task terminalized during command")
                     active.pending_command = None
                     pending.done.set()
                 self._active = None

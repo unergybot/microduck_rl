@@ -115,7 +115,7 @@ class ChildLaunch:
 
 type LaunchFactory = Callable[[int], ChildLaunch]
 type IntentKind = Literal[
-    "ready", "start", "command", "status", "stop", "close", "delivery"
+    "ready", "start", "command", "status", "observe", "stop", "close", "delivery"
 ]
 
 
@@ -338,6 +338,9 @@ class RuntimeProcessSupervisor:
     ) -> AckPayload:
         return self._submit("command", task_id, command, lease_ms)
 
+    def observe(self) -> RobotStatus:
+        return self._submit("observe")
+
     def status(self, task_id: str) -> RobotStatus:
         return self._submit("status", task_id)
 
@@ -535,6 +538,8 @@ class RuntimeProcessSupervisor:
             return self._start(intent.args[0], intent.args[1], intent.args[2])
         if intent.kind == "command":
             return self._command(*intent.args)
+        if intent.kind == "observe":
+            return self._observe()
         if intent.kind == "status":
             return self._status(intent.args[0])
         if intent.kind == "stop":
@@ -636,6 +641,7 @@ class RuntimeProcessSupervisor:
         self._active_task = request.taskId
         self._last_event_sequence = 0
         payload = StartPayload(
+            navigation=getattr(request, "navigation", None),
             actionCode=request.actionCode,
             bundleDigest=request.bundleDigest,
             parameters=request.parameters,
@@ -699,6 +705,16 @@ class RuntimeProcessSupervisor:
             self._quarantine("COMMAND_ACK_MISMATCH")
             raise SupervisorOperationError("wrong COMMAND acknowledgment")
         return response.payload
+
+    def _observe(self) -> RobotStatus:
+        if not self.snapshot().child_healthy:
+            raise SupervisorUnavailable("runtime child is not healthy")
+        response = self._guarded_exchange(
+            RuntimeMessageKind.OBSERVE, None, StatusRequestPayload(), {RuntimeMessageKind.OBSERVE}
+        )
+        assert isinstance(response.payload, StatusPayload)
+        self._publish(self.snapshot().state, status=response.payload.status)
+        return response.payload.status
 
     def _status(self, task_id: str) -> RobotStatus:
         self._require_active(task_id)

@@ -20,7 +20,7 @@ from .action_catalog import (
     validate_code_owned_parameters,
 )
 from .contracts import PolicyBundle, TaskCreateRequest, TaskEvidence
-from .main import load_qualified_bundle, load_verified_bundle
+from .main import load_verified_bundle
 from .mujoco_runtime import MicroduckMujocoRuntime
 from .parent_death import (
     close_unrelated_fds,
@@ -69,6 +69,7 @@ _ERROR_CODES = {
     RuntimeMessageKind.START: "START_FAILED",
     RuntimeMessageKind.COMMAND: "COMMAND_REJECTED",
     RuntimeMessageKind.STATUS: "STATUS_FAILED",
+    RuntimeMessageKind.OBSERVE: "OBSERVE_FAILED",
     RuntimeMessageKind.ZERO_AND_STOP: "STOP_FAILED",
     RuntimeMessageKind.SHUTDOWN: "SHUTDOWN_FAILED",
 }
@@ -174,6 +175,8 @@ class RuntimeChildHost:
         self._generation: int | None = None
         self._task_id: str | None = None
         self._lease_deadline: float | None = None
+        self._navigation_deadline: float | None = None
+        self._navigation_request = None
         self._discrete_deadline: float | None = None
         self._completion_cleanup_deadline: float | None = None
         self._last_sequence = -1
@@ -266,6 +269,7 @@ class RuntimeChildHost:
                 return
             if message.kind not in {
                 RuntimeMessageKind.HELLO,
+                RuntimeMessageKind.OBSERVE,
                 RuntimeMessageKind.LOAD,
                 RuntimeMessageKind.START,
                 RuntimeMessageKind.COMMAND,
@@ -306,10 +310,13 @@ class RuntimeChildHost:
         while not self._stop.wait(0.01):
             with self._state_lock:
                 deadline = self._lease_deadline
+                navigation_deadline = self._navigation_deadline
                 discrete_deadline = self._discrete_deadline
                 cleanup_deadline = self._completion_cleanup_deadline
             if deadline is not None and self._clock() >= deadline:
                 self._request_safety("LEASE_EXPIRED")
+            if navigation_deadline is not None and self._clock() >= navigation_deadline:
+                self._request_safety("DEADLINE_EXCEEDED")
             if discrete_deadline is not None and self._clock() >= discrete_deadline:
                 self._request_safety("MAX_DURATION_EXCEEDED")
             if cleanup_deadline is not None and time.monotonic() >= cleanup_deadline:
@@ -330,6 +337,7 @@ class RuntimeChildHost:
             reason = self._safety_reason or "RUNTIME_FAILED"
             request = self._last_request
             self._lease_deadline = None
+            self._navigation_deadline = None
         if runtime is None:
             self._safety_complete.set()
             return
@@ -713,6 +721,7 @@ class RuntimeChildHost:
             with self._state_lock:
                 self._handle = None
                 self._lease_deadline = None
+                self._navigation_deadline = None
                 self._discrete_deadline = None
                 self._completed_identity = (generation, task_id)
                 self._generation = None
@@ -783,7 +792,7 @@ class RuntimeChildHost:
                 )
                 if root is None:
                     raise ValueError
-                loader = self._bundle_loader or load_qualified_bundle
+                loader = self._bundle_loader or load_verified_bundle
                 bundle = loader(root)
                 if bundle.bundleDigest != message.payload.bundleDigest:
                     raise ValueError
@@ -803,6 +812,16 @@ class RuntimeChildHost:
                 self._start(message)
             elif message.kind is RuntimeMessageKind.COMMAND:
                 self._command(message)
+            elif message.kind is RuntimeMessageKind.OBSERVE:
+                if self._runtime is None:
+                    raise ValueError
+                self._send(
+                    self._response(
+                        message,
+                        RuntimeMessageKind.OBSERVE,
+                        StatusPayload(status=self._runtime.status()),
+                    )
+                )
             elif message.kind is RuntimeMessageKind.STATUS:
                 if not self._matches_active(message):
                     raise ValueError
@@ -874,6 +893,7 @@ class RuntimeChildHost:
                 self._generation = None
                 self._task_id = None
                 self._lease_deadline = None
+                self._navigation_deadline = None
                 self._discrete_deadline = None
                 self._last_request = None
 
@@ -903,7 +923,15 @@ class RuntimeChildHost:
         )
         if action.availability != "AVAILABLE":
             raise ValueError
-        request = TaskCreateRequest(
+        request_type = TaskCreateRequest
+        extra = {}
+        if message.payload.navigation is not None:
+            from .navigation_service import NavigationRuntimeRequest
+
+            request_type = NavigationRuntimeRequest
+            extra["navigation"] = message.payload.navigation
+        request = request_type(
+            **extra,
             schema="MICRODUCK_SIM_TASK_V1",
             taskId=message.taskId,
             actionCode=message.payload.actionCode,
@@ -918,6 +946,13 @@ class RuntimeChildHost:
             self._generation = message.generation
             self._task_id = message.taskId
             self._active_action_code = message.payload.actionCode
+            self._navigation_request = message.payload.navigation
+            self._navigation_deadline = (
+                self._clock()
+                + message.payload.navigation.proposal.profile.deadlineMs / 1000
+                if message.payload.navigation
+                else None
+            )
             self._lease_deadline = (
                 self._clock() + message.payload.leaseMs / 1000
                 if message.payload.leaseMs is not None
@@ -961,7 +996,16 @@ class RuntimeChildHost:
         with self._state_lock:
             self._lease_deadline = self._clock() + message.payload.leaseMs / 1000
         assert self._runtime is not None and self._handle is not None
-        self._runtime.command(self._handle, message.payload.parameters)
+        if self._navigation_request is None:
+            self._runtime.command(self._handle, message.payload.parameters)
+        elif (
+            message.payload.parameters
+            != {"vxMps": 0.0, "vyMps": 0.0, "yawRateRadps": 0.0}
+            or message.payload.leaseMs
+            != self._navigation_request.proposal.profile.leaseMs
+        ):
+            self._request_safety("NAVIGATION_LEASE_INVALID")
+            raise ValueError("navigation renewal cannot change commands")
         if self._safety_requested.is_set():
             return
         published = self._send(
