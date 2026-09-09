@@ -569,6 +569,10 @@ def test_generated_openapi_has_exact_v1_operations_security_and_schema_identifie
                 actual_parameters
             ) == _normalize_openapi_schema(expected_parameters)
 
+    # V2 is additive; the reachable V1 paths and schemas remain byte-contract compatible.
+    generated["paths"] = {path: value for path, value in generated["paths"].items() if path.startswith("/v1/")}
+    generated["components"]["schemas"] = {name: value for name, value in generated["components"]["schemas"].items()
+        if name in checked_in["components"]["schemas"]}
     assert _normalize_openapi_schema(generated) == _normalize_openapi_schema(checked_in)
 
 

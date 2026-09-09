@@ -89,6 +89,7 @@ class RuntimeMessageKind(str, Enum):
     START = "START"
     COMMAND = "COMMAND"
     STATUS = "STATUS"
+    OBSERVE = "OBSERVE"
     ZERO_AND_STOP = "ZERO_AND_STOP"
     SHUTDOWN = "SHUTDOWN"
     READY = "READY"
@@ -106,6 +107,7 @@ class RuntimeOperationKind(str, Enum):
     START = "START"
     COMMAND = "COMMAND"
     STATUS = "STATUS"
+    OBSERVE = "OBSERVE"
     ZERO_AND_STOP = "ZERO_AND_STOP"
     SHUTDOWN = "SHUTDOWN"
 
@@ -119,7 +121,13 @@ class LoadPayload(ContractModel):
     bundleRoot: BoundedPath | None = None
 
 
+from .navigation_contracts import NavigationTaskRequest
+
+
 class StartPayload(ContractModel):
+    navigation: NavigationTaskRequest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     actionCode: BoundedIdentifier
     bundleDigest: str = Field(pattern=_DIGEST_PATTERN)
     parameters: ParameterObject
@@ -234,6 +242,7 @@ _LIFECYCLE_MESSAGE_KINDS = frozenset(
         RuntimeMessageKind.HELLO,
         RuntimeMessageKind.LOAD,
         RuntimeMessageKind.READY,
+        RuntimeMessageKind.OBSERVE,
         RuntimeMessageKind.SHUTDOWN,
     }
 )
@@ -241,6 +250,7 @@ _LIFECYCLE_MESSAGE_KINDS = frozenset(
 _LIFECYCLE_OPERATION_KINDS = frozenset(
     {
         RuntimeOperationKind.HELLO,
+        RuntimeOperationKind.OBSERVE,
         RuntimeOperationKind.LOAD,
         RuntimeOperationKind.SHUTDOWN,
     }
@@ -248,7 +258,7 @@ _LIFECYCLE_OPERATION_KINDS = frozenset(
 
 
 def _payload_type(kind: RuntimeMessageKind, payload: object) -> type[RuntimePayload]:
-    if kind is RuntimeMessageKind.STATUS:
+    if kind in {RuntimeMessageKind.STATUS, RuntimeMessageKind.OBSERVE}:
         return (
             StatusRequestPayload
             if isinstance(payload, StatusRequestPayload) or payload == {}

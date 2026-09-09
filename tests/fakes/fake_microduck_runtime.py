@@ -296,6 +296,9 @@ class FakeRuntimeProcessSupervisor:
             self.runtime.command(self.handle, command.parameters)
             return AckPayload(acknowledgedKind="COMMAND")
 
+    def observe(self):
+        return self.runtime.status()
+
     def status(self, task_id):
         return self.runtime.status()
 

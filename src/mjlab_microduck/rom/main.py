@@ -476,6 +476,24 @@ def create_configured_app(
             )
         except Exception:  # noqa: BLE001 - do not leak filesystem or database contents.
             reasons.append("RUNTIME_UNAVAILABLE")
+    if service is not None:
+        from .navigation_service import NavigationTaskService
+        from .navigation.installation import load as load_navigation
+
+        installation = None
+        enabled = (
+            environ.get("ROM_MICRODUCK_NAVIGATION_ENABLED", "false").lower() == "true"
+        )
+        if enabled:
+            try:
+                installation = load_navigation(
+                    configuration.bundle_dir, bundle.bundleDigest
+                )
+            except Exception:
+                pass  # Missing navigation artifacts do not block V1 or platform startup.
+        service.navigation = NavigationTaskService(
+            service, installation, enabled=enabled
+        )
     app = create_app(service, configuration.bearer_token)
     app.state.task_service = service
     app.state.installed_bundle = bundle

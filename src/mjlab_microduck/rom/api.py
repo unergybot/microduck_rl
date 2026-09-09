@@ -168,7 +168,7 @@ def _route_has_json_body(scope: Scope) -> bool:
         return False
     method = scope.get("method")
     path = scope.get("path", "")
-    return method in {"POST", "PUT"} and (path == "/v1" or path.startswith("/v1/"))
+    return method in {"POST", "PUT"} and (path == "/v1" or path.startswith("/v1/") or path.startswith("/v2/navigation/"))
 
 
 def _content_length(scope: Scope) -> int | None:
@@ -609,6 +609,9 @@ def create_app(service: SimulatorTaskService | None, bearer_token: str) -> FastA
                         operation.get("responses", {}).pop("422", None)
             _restore_exact_integer_bounds(app.openapi_schema)
         return app.openapi_schema
+
+    from .navigation_api import install_routes
+    install_routes(app, service, require_bearer)
 
     app.openapi = openapi
     return app

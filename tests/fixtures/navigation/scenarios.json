@@ -1,0 +1,103 @@
+{
+  "scene": {
+    "revision": "microduck-navigation-flat-v1",
+    "area": {
+      "minX": -1.0,
+      "minY": -1.0,
+      "maxX": 2.0,
+      "maxY": 2.0
+    },
+    "obstacles": [
+      {
+        "minX": 0.4,
+        "minY": -0.1,
+        "maxX": 0.6,
+        "maxY": 0.3
+      }
+    ],
+    "landmarks": {
+      "home": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "desk": {
+        "x": 1.0,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "door": {
+        "x": 0.0,
+        "y": 1.0,
+        "yaw": 1.5707963267948966
+      }
+    }
+  },
+  "profile": {
+    "robotRadiusM": 0.15,
+    "clearanceM": 0.05,
+    "gridResolutionM": 0.05,
+    "maxSpeedMps": 0.05,
+    "maxYawRateRadps": 0.2,
+    "poseFreshnessMs": 200,
+    "arrivalToleranceM": 0.08,
+    "headingToleranceRad": 0.15,
+    "settleMs": 500,
+    "stableSpeedMps": 0.02,
+    "stableYawRateRadps": 0.05,
+    "deadlineMs": 180000,
+    "leaseMs": 1000
+  },
+  "scenarios": [
+    {
+      "name": "open",
+      "start": [
+        0.0,
+        -0.5,
+        0.0
+      ],
+      "landmarkId": "home",
+      "expectedReason": "ARRIVED"
+    },
+    {
+      "name": "turn",
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "landmarkId": "door",
+      "expectedReason": "ARRIVED"
+    },
+    {
+      "name": "detour",
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "landmarkId": "desk",
+      "expectedReason": "ARRIVED"
+    },
+    {
+      "name": "unreachable",
+      "start": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "landmarkId": "home",
+      "expectedReason": "PATH_BLOCKED"
+    },
+    {
+      "name": "settle",
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "landmarkId": "home",
+      "expectedReason": "ARRIVED"
+    }
+  ]
+}
