@@ -3,7 +3,7 @@
 import heapq
 
 
-def plan_cells(blocked, start, goal, bounds):
+def plan_cells(blocked, start, goal, bounds, *, prefer_clearance=False):
     width, height = bounds
     if width * height > 250000:
         raise ValueError("map exceeds planner budget")
@@ -13,6 +13,23 @@ def plan_cells(blocked, start, goal, bounds):
 
     if not valid(start) or not valid(goal):
         return None
+    # A soft preference leaves narrow but valid routes reachable, while avoiding
+    # unnecessary travel immediately along an inflated collision boundary.
+    boundary = (
+        {(x + dx, y + dy) for x, y in blocked for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+        if prefer_clearance
+        else set()
+    )
+    outer_boundary = (
+        {
+            (x + dx, y + dy)
+            for x, y in boundary
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+        }
+        if prefer_clearance
+        else set()
+    )
     queue = [(0, 0, start)]
     costs = {start: 0}
     previous = {}
@@ -28,7 +45,9 @@ def plan_cells(blocked, start, goal, bounds):
             return list(reversed(route))
         x, y = current
         for nxt in ((x + 1, y), (x, y + 1), (x - 1, y), (x, y - 1)):
-            new = cost + 1
+            new = (
+                cost + 1 + (4 if nxt in boundary else 2 if nxt in outer_boundary else 0)
+            )
             if valid(nxt) and new < costs.get(nxt, float("inf")):
                 costs[nxt] = new
                 previous[nxt] = current

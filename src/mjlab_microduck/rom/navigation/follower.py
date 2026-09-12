@@ -58,9 +58,7 @@ class Navigator:
             heading = angle(self.goal.yaw - pose.yaw)
             if abs(heading) > p.headingToleranceRad:
                 self.settled_since = None
-                return Command(
-                    yaw=max(-p.maxYawRateRadps, min(p.maxYawRateRadps, heading))
-                )
+                return Command(yaw=math.copysign(p.maxYawRateRadps, heading))
             if abs(speed) <= p.stableSpeedMps and abs(yaw_rate) <= p.stableYawRateRadps:
                 if self.settled_since is None:
                     self.settled_since = now
@@ -74,6 +72,7 @@ class Navigator:
                 self.grid.cell(pose.x, pose.y),
                 self.grid.cell(self.goal.x, self.goal.y),
                 self.grid.bounds,
+                prefer_clearance=True,
             )
             if cells is None:
                 self.reason = "PATH_BLOCKED"
@@ -112,10 +111,10 @@ class Navigator:
         heading = angle(
             math.atan2(waypoint[1] - pose.y, waypoint[0] - pose.x) - pose.yaw
         )
-        yaw = max(-p.maxYawRateRadps, min(p.maxYawRateRadps, heading))
-        vx = (
-            0.0
-            if abs(heading) > p.headingToleranceRad
-            else min(p.maxSpeedMps, math.dist((pose.x, pose.y), waypoint))
-        )
-        return Command(vx=vx, yaw=yaw)
+        # The walking policy has a command deadband. Shrinking a command with
+        # remaining distance/heading can leave a valid task permanently stalled.
+        # Use the approved effective command, alternating turning and advancing;
+        # arrival/settlement above always commands zero. No startup overdrive.
+        if abs(heading) > p.headingToleranceRad:
+            return Command(yaw=math.copysign(p.maxYawRateRadps, heading))
+        return Command(vx=p.maxSpeedMps)

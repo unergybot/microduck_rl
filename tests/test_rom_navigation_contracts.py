@@ -1,17 +1,19 @@
 import math
+
 import pytest
 from pydantic import ValidationError
+
 from mjlab_microduck.rom.navigation_contracts import (
-    NavigationLeaseRequest,
-    Pose,
     Area,
+    NavigationLeaseRequest,
     NavigationProfile,
+    Pose,
     digest,
 )
 
 
 def test_renewal_rejects_motion_intent_and_nonincreasing_type():
-    valid = dict(taskId="a" * 32, proposalDigest="sha256:" + "b" * 64, sequence=1)
+    valid = {"taskId": "a" * 32, "proposalDigest": "sha256:" + "b" * 64, "sequence": 1}
     assert NavigationLeaseRequest(**valid).sequence == 1
     for extra in (
         {"landmarkId": "door"},
@@ -44,21 +46,21 @@ def test_canonical_digest_normalizes_numbers_and_key_order():
 
 
 def test_profile_never_accepts_sideways_or_unbounded_motion():
-    fields = dict(
-        robotRadiusM=0.15,
-        clearanceM=0.05,
-        gridResolutionM=0.05,
-        maxSpeedMps=0.05,
-        maxYawRateRadps=0.2,
-        poseFreshnessMs=200,
-        arrivalToleranceM=0.08,
-        headingToleranceRad=0.15,
-        settleMs=500,
-        stableSpeedMps=0.02,
-        stableYawRateRadps=0.05,
-        deadlineMs=120000,
-        leaseMs=1000,
-    )
+    fields = {
+        "robotRadiusM": 0.15,
+        "clearanceM": 0.05,
+        "gridResolutionM": 0.05,
+        "maxSpeedMps": 0.05,
+        "maxYawRateRadps": 0.2,
+        "poseFreshnessMs": 200,
+        "arrivalToleranceM": 0.08,
+        "headingToleranceRad": 0.15,
+        "settleMs": 500,
+        "stableSpeedMps": 0.02,
+        "stableYawRateRadps": 0.05,
+        "deadlineMs": 120000,
+        "leaseMs": 1000,
+    }
     assert NavigationProfile(**fields).maxSpeedMps == 0.05
     for patch in (
         {"maxSpeedMps": 0},
@@ -71,8 +73,9 @@ def test_profile_never_accepts_sideways_or_unbounded_motion():
 
 
 def test_proposal_tamper_is_rejected():
-    from pathlib import Path
     import json
+    from pathlib import Path
+
     from mjlab_microduck.rom.navigation_contracts import NavigationTaskRequest
 
     value = json.loads(Path("tests/fixtures/navigation/wire.json").read_text())["task"]
@@ -80,3 +83,18 @@ def test_proposal_tamper_is_rejected():
     value["proposal"]["destination"]["x"] = 1.5
     with pytest.raises(ValidationError):
         NavigationTaskRequest.model_validate(value)
+
+
+def test_calibrated_profile_accepts_walking_limits_and_rejects_excess():
+    import json
+    from pathlib import Path
+
+    original = json.loads(Path("tests/fixtures/navigation/candidate.json").read_text())[
+        "profile"
+    ]
+    calibrated = original | {"maxSpeedMps": 0.4, "maxYawRateRadps": 1.0}
+    assert NavigationProfile.model_validate(calibrated).maxSpeedMps == 0.4
+    assert digest(calibrated) != digest(original)
+    for invalid in ({"maxSpeedMps": 0.4001}, {"maxYawRateRadps": 1.0001}):
+        with pytest.raises(ValidationError):
+            NavigationProfile.model_validate(calibrated | invalid)

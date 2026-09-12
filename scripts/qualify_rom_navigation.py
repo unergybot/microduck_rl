@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Offline real MuJoCo/ONNX navigation qualification; never connects to a robot.
+"""Offline MuJoCo/ONNX navigation evaluation; never connects to a robot.
 
-Failed reports are retained and cannot enable navigation. Candidate injection is
-limited to offline stepping; ordinary runtime construction requires a passed report.
+Reports are advisory and never change installation or feature flags. Exit status
+describes the requested batch, not a mandatory fifty-run promotion threshold.
 """
 
 import argparse
@@ -146,8 +146,20 @@ def main():
         default=Path("tests/fixtures/navigation/scenarios.json"),
     )
     parser.add_argument("--seed-count", type=int, default=10)
+    parser.add_argument(
+        "--seeds", type=int, nargs="+", help="Explicit seeds instead of 0..seed-count-1"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    seeds = args.seeds if args.seeds is not None else list(range(args.seed_count))
+    if (
+        not seeds
+        or len(seeds) > 100
+        or any(seed < 0 or seed > 2**32 - 1 for seed in seeds)
+    ):
+        parser.error("select between one and 100 unsigned 32-bit seeds")
+    if args.output.resolve().is_relative_to(args.bundle.resolve()):
+        parser.error("evaluation output must be outside the installed bundle")
     data = json.loads(args.scenarios.read_text())
     scene = Scene.model_validate(data["scene"])
     profile = NavigationProfile.model_validate(data["profile"])
@@ -164,7 +176,7 @@ def main():
         "runs": [],
     }
     for scenario in data["scenarios"]:
-        for seed in range(args.seed_count):
+        for seed in seeds:
             try:
                 result = run(args.bundle, bundle, scene, profile, scenario, seed)
             except Exception as error:  # noqa: BLE001 - retain every failed qualification result
@@ -184,11 +196,7 @@ def main():
                 result.get("reason", result.get("error")),
                 flush=True,
             )
-    return (
-        0
-        if len(report["runs"]) >= 50 and all(r["passed"] for r in report["runs"])
-        else 1
-    )
+    return 0 if report["runs"] and all(r["passed"] for r in report["runs"]) else 1
 
 
 if __name__ == "__main__":

@@ -201,13 +201,13 @@
         },
         "maxSpeedMps": {
           "exclusiveMinimum": 0,
-          "maximum": 0.1,
+          "maximum": 0.4,
           "title": "Maxspeedmps",
           "type": "number"
         },
         "maxYawRateRadps": {
           "exclusiveMinimum": 0,
-          "maximum": 0.5,
+          "maximum": 1.0,
           "title": "Maxyawrateradps",
           "type": "number"
         },
