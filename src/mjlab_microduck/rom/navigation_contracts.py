@@ -96,9 +96,9 @@ class NavigationProfile(Model):
     gridResolutionM: Annotated[
         float, Field(strict=True, gt=0, le=1, allow_inf_nan=False)
     ]
-    maxSpeedMps: Annotated[float, Field(strict=True, gt=0, le=0.1, allow_inf_nan=False)]
+    maxSpeedMps: Annotated[float, Field(strict=True, gt=0, le=0.4, allow_inf_nan=False)]
     maxYawRateRadps: Annotated[
-        float, Field(strict=True, gt=0, le=0.5, allow_inf_nan=False)
+        float, Field(strict=True, gt=0, le=1.0, allow_inf_nan=False)
     ]
     poseFreshnessMs: Annotated[int, Field(gt=0, le=1000)]
     arrivalToleranceM: Annotated[

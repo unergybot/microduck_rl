@@ -1,10 +1,10 @@
 import json
 import math
 from pathlib import Path
-import pytest
-from mjlab_microduck.rom.navigation_contracts import Scene, NavigationProfile, Pose
-from mjlab_microduck.rom.navigation.planner import plan_cells
+
 from mjlab_microduck.rom.navigation.follower import Navigator
+from mjlab_microduck.rom.navigation.planner import plan_cells
+from mjlab_microduck.rom.navigation_contracts import NavigationProfile, Pose, Scene
 
 
 def setup_nav(goal="desk"):
@@ -22,6 +22,15 @@ def test_obstacle_detour_and_unreachable_goal():
     assert path[0] == (0, 0) and path[-1] == (2, 0) and (1, 0) not in path
     assert plan_cells({(1, 0), (1, 1), (1, 2)}, (0, 0), (2, 0), (3, 3)) is None
     assert plan_cells(set(), (0, 0), (-1, 0), (3, 3)) is None
+    # A clearance preference must not turn a valid narrow corridor into a wall.
+    blocked = {(x, y) for x in range(5) for y in (0, 2)}
+    assert plan_cells(blocked, (0, 1), (4, 1), (5, 3), prefer_clearance=True) == [
+        (0, 1),
+        (1, 1),
+        (2, 1),
+        (3, 1),
+        (4, 1),
+    ]
 
 
 def test_heading_first_never_strafes_or_reverses():
@@ -91,3 +100,42 @@ def test_local_drift_replans_to_same_goal_when_route_exists():
         Pose(x=0.2, y=-0.5, yaw=0.0), now=0.1, captured=0.1, speed=0.0, yaw_rate=0.0
     )
     assert result.reason is None
+
+
+def test_final_heading_uses_effective_turn_command_without_forward_motion():
+    nav = setup_nav("home")
+    out = nav.update(
+        Pose(x=0.0, y=0.0, yaw=-0.18), now=0.0, captured=0.0, speed=0.0, yaw_rate=0.0
+    )
+    assert out.vx == 0.0 and out.yaw == 0.2
+
+
+def test_near_destination_does_not_decay_into_policy_deadband():
+    nav = setup_nav("home")
+    nav.profile = nav.profile.model_copy(update={"maxSpeedMps": 0.2})
+    out = nav.update(
+        Pose(x=-0.09, y=0.0, yaw=0.1), now=0.0, captured=0.0, speed=0.0, yaw_rate=0.0
+    )
+    assert out.vx == 0.2 and out.yaw == 0.0
+
+
+def test_heading_drift_stops_advance_and_commands_full_bounded_turn():
+    nav = setup_nav("home")
+    out = nav.update(
+        Pose(x=-0.3, y=0.0, yaw=0.18), now=0.0, captured=0.0, speed=0.0, yaw_rate=0.0
+    )
+    assert out.vx == 0.0 and out.yaw == -0.2
+
+
+def test_detour_prefers_two_cells_for_measured_tracking_drift():
+    nav = setup_nav("desk")
+    nav.update(
+        Pose(x=0.0, y=0.0, yaw=0.0), now=0.0, captured=0.0, speed=0.0, yaw_rate=0.0
+    )
+    for point in nav.path:
+        x, y = nav.grid.cell(*point)
+        assert all(
+            (x + dx, y + dy) not in nav.grid.blocked
+            for dx in range(-2, 3)
+            for dy in range(-2, 3)
+        )
