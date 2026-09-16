@@ -1,0 +1,223 @@
+[
+  {
+    "url": "https://jecoprojects.com/duckblock/",
+    "sha256": "sha256:906d67f3f5574bc95548d774da47a883f28fe236ea6cc446146b4225687cd5e2",
+    "sizeBytes": 2437,
+    "contentType": "text/html",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/rolldown-runtime-Dd_uD5pT.js",
+    "sha256": "sha256:c5f0356f5d0918a3137e4e811fd18950efe8ac8f6bf84d1d4da7811c477a24d8",
+    "sizeBytes": 1106,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/jsx-runtime-BpzPEenQ.js",
+    "sha256": "sha256:60a64ced602d5e913f2a0328d2ec4a7b670c893614a26c47794317523d276398",
+    "sizeBytes": 7899,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/index-Dv40OqNI.js",
+    "sha256": "sha256:dc1ef7304014ef093e2c45726ddaceb6dc09a36fc4ed001040c5531341e14ad5",
+    "sizeBytes": 272552,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://fonts.googleapis.com/css2?family=Anton&display=swap",
+    "sha256": "sha256:60f7a6eec04197f4e0cc89810815abe3d1712ef8fe9519ac4517bced2deb78e5",
+    "sizeBytes": 1212,
+    "contentType": "text/css; charset=utf-8",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/App-vSTvmffz.js",
+    "sha256": "sha256:1dbb2d4dbc8243f9fe77f168fa1e84e44138739fde4e318ec3d339ab0e7eecfa",
+    "sizeBytes": 1753901,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/App-kYQMguO_.css",
+    "sha256": "sha256:22a367a143df5ad3c0da64573b802d52c8c035a67d69aae26d1b93ab8fde8e55",
+    "sizeBytes": 1220,
+    "contentType": "text/css",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/audio-BcH_VRXw.js",
+    "sha256": "sha256:c30f6e6d9e4c78e8920aead2b3b9575dc9bb5f1044ebc03a5d36c8b7a143ad53",
+    "sizeBytes": 2616,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495",
+    "sha256": "sha256:08c4fd72f9d96a7aa554510dff2c293973b1b092dff1b9b282bce9111b50ef41",
+    "sizeBytes": 30294,
+    "contentType": "text/javascript;charset=UTF-8",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/cdn-cgi/challenge-platform/scripts/jsd/main.js",
+    "error": "Error: response.body: Response body is unavailable for redirect responses"
+  },
+  {
+    "url": "https://static.blockly.com/media/click.mp3",
+    "sha256": "sha256:1048f2539ac47e4eaa4bd1688968c0d7b9956bd6fef507644ee5131924c6517c",
+    "sizeBytes": 2304,
+    "contentType": "audio/mpeg",
+    "status": 200
+  },
+  {
+    "url": "https://static.blockly.com/media/delete.mp3",
+    "sha256": "sha256:6ea0afab062cb3ba5409dc65d7a9fdf85d602b1870d231d80bdf3cc5b32432b6",
+    "sizeBytes": 3123,
+    "contentType": "audio/mpeg",
+    "status": 200
+  },
+  {
+    "url": "https://static.blockly.com/media/sprites.svg",
+    "sha256": "sha256:862de0ee081fa9baf504e673736d7446439c15246452258cab964a82566ef40f",
+    "sizeBytes": 1775,
+    "contentType": "image/svg+xml",
+    "status": 200
+  },
+  {
+    "url": "https://static.blockly.com/media/drop.mp3",
+    "sha256": "sha256:6c76cac85b42494683549938729f9994eec9ce03a940e5b4e1ef18279dea01ff",
+    "sizeBytes": 5434,
+    "contentType": "audio/mpeg",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/cdn-cgi/challenge-platform/h/g/scripts/jsd/330e41bb475c/main.js?",
+    "sha256": "sha256:c422012cc8ac64b2e4ec16455b3544fe107d03385572ff9e7257d0a4f178202f",
+    "sizeBytes": 21434,
+    "contentType": "application/javascript; charset=UTF-8",
+    "status": 200
+  },
+  {
+    "url": "https://static.blockly.com/media/disconnect.mp3",
+    "sha256": "sha256:849465a8968836ab5b24b68a7289ee76ca1a6a50ba87a295a32efe1e507e3451",
+    "sizeBytes": 1586,
+    "contentType": "audio/mpeg",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/cdn-cgi/rum?",
+    "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sizeBytes": 0,
+    "contentType": "text/plain",
+    "status": 204
+  },
+  {
+    "url": "https://jecoprojects.com/cdn-cgi/challenge-platform/h/g/jsd/oneshot/330e41bb475c/0.3535149711665152:1788753911:dpP2RPJuWwRhER69m36BvW2MvO35LCXm_0Ly0ptcSEM/a3733f68ea5caca3",
+    "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sizeBytes": 0,
+    "contentType": "text/plain; charset=UTF-8",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/mujoco-Dv4K4OO9.js",
+    "sha256": "sha256:0456b291ae14f1f41e3b54e2b9f74cbd194f7d8178c0d8d71fdb5625925a860c",
+    "sizeBytes": 105309,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/ort.wasm.bundle.min-7tVGCJ_h.js",
+    "sha256": "sha256:ebd4040fb4a7f877c776be96095c5ba46f0aa280204c60d9a3152a2faf68cd25",
+    "sizeBytes": 70573,
+    "contentType": "application/javascript",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/mujoco-Mp9KyG2b.wasm",
+    "sha256": "sha256:1e3ba4ae1f4dfb4f918314dc472b253d5a00ed61abd59a5a91f6994c882ad560",
+    "sizeBytes": 10117577,
+    "contentType": "application/wasm",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/robot/mjlab/kinematics.json?v=11",
+    "sha256": "sha256:099c64fa03280514eed881accf563061a640eb7800d5ce15be5af92d1f63d38b",
+    "sizeBytes": 26666,
+    "contentType": "application/json",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/robot/mjlab/robot_allcollisions.xml",
+    "sha256": "sha256:7a6fdf437f5a80c7348ad801f43f906b997a834389cb70cca5e1e8517ba38044",
+    "sizeBytes": 32898,
+    "contentType": "text/xml",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/robot/mjlab/microduck.glb?v=11",
+    "sha256": "sha256:ad0b8d1c886a857fd09d337be11e731f4ac72bf099b0af63081031f97ed6eadb",
+    "sizeBytes": 1279444,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/bundle/ort-wasm-simd-threaded-Cpm-ox6i.wasm",
+    "sha256": "sha256:d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6",
+    "sizeBytes": 13479978,
+    "contentType": "application/wasm",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/BEST_alpha_walking.onnx",
+    "sha256": "sha256:e36332d383997d51401897734cd3e79cf5038406feddb18b4d57ecfb141daa6c",
+    "sizeBytes": 793705,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/BEST_alpha_sitstand.onnx",
+    "sha256": "sha256:c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
+    "sizeBytes": 793695,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/roulade.onnx",
+    "sha256": "sha256:3d60da08fc13f29c1b57f41977aa898132c0d60042100149d8e775affcbca32b",
+    "sizeBytes": 793685,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/ball_kick_left.onnx",
+    "sha256": "sha256:d6928284dccd3dd61e08bf2f760effa74309fbefd97b2b31afb2a60f526d196a",
+    "sizeBytes": 793685,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/ball_kick_right.onnx",
+    "sha256": "sha256:147a32c388c6b19111b3ac3b550a9a6dc8b8bf267118af4d8c3712522eedb5af",
+    "sizeBytes": 793685,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/alpha_ground_pick.onnx",
+    "sha256": "sha256:ffbf5109982ff999b0ba53afe86b9ae731bbec679d67fb7f8ab4c52152c88872",
+    "sizeBytes": 793685,
+    "contentType": "application/octet-stream",
+    "status": 200
+  },
+  {
+    "url": "https://jecoprojects.com/duckblock/policies/BEST_alpha_stand.onnx",
+    "sha256": "sha256:1569268713e40deea795dd2922dba50d3621e15a872855408b6b1b125b1c094b",
+    "sizeBytes": 793705,
+    "contentType": "application/octet-stream",
+    "status": 200
+  }
+]

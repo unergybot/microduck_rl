@@ -1,0 +1,7 @@
+{
+  "effectiveBehaviorDifferingFields": [
+    "walkingPolicySha256"
+  ],
+  "primarySitstandWeightsEqual": true,
+  "modelClosureEqual": true
+}
