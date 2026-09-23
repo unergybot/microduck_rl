@@ -34,6 +34,9 @@ from .service import (
     BundleMismatch,
     CommandSequenceConflict,
     InvalidParameters,
+    NavigationAuthorizationChanged,
+    NavigationIdentityMismatch,
+    NavigationTaskNotRunning,
     NotReady,
     PreconditionFailed,
     RobotBusy,
@@ -55,6 +58,10 @@ ErrorCode = Literal[
     "BUNDLE_MISMATCH",
     "ACTION_UNAVAILABLE",
     "PARAMETER_INVALID",
+    "NAVIGATION_LEASE_MALFORMED",
+    "NAVIGATION_IDENTITY_MISMATCH",
+    "NAVIGATION_AUTHORIZATION_CHANGED",
+    "NAVIGATION_TASK_NOT_RUNNING",
     "PRECONDITION_FAILED",
     "ROBOT_BUSY",
     "TASK_ID_CONFLICT",
@@ -233,6 +240,15 @@ _SERVICE_ERRORS: dict[type[SimulatorServiceError], tuple[int, ErrorCode, str]] =
     ),
     ActionUnavailable: (400, "ACTION_UNAVAILABLE", "Requested action is unavailable"),
     InvalidParameters: (400, "PARAMETER_INVALID", "Parameters are invalid"),
+    NavigationIdentityMismatch: (
+        400, "NAVIGATION_IDENTITY_MISMATCH", "Navigation identity does not match"
+    ),
+    NavigationAuthorizationChanged: (
+        400, "NAVIGATION_AUTHORIZATION_CHANGED", "Navigation authorization changed"
+    ),
+    NavigationTaskNotRunning: (
+        400, "NAVIGATION_TASK_NOT_RUNNING", "Navigation task is not running"
+    ),
     PreconditionFailed: (
         400,
         "PRECONDITION_FAILED",
@@ -374,8 +390,16 @@ def create_app(service: SimulatorTaskService | None, bearer_token: str) -> FastA
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_error(
-        _: Request, __: RequestValidationError
+        request: Request, __: RequestValidationError
     ) -> JSONResponse:
+        if (
+            request.method == "PUT"
+            and request.url.path.startswith("/v2/navigation/tasks/")
+            and request.url.path.endswith("/lease")
+        ):
+            return _error_response(
+                400, "NAVIGATION_LEASE_MALFORMED", "Navigation lease is malformed"
+            )
         return _error_response(400, "PARAMETER_INVALID", "Parameters are invalid")
 
     @app.exception_handler(Exception)

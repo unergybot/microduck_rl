@@ -20,6 +20,7 @@ from mjlab_microduck.rom.process_protocol import (
     RuntimeMessage,
     RuntimeMessageKind,
     StartPayload,
+    StatusRequestPayload,
     ZeroAndStopPayload,
     decode_packet,
     encode_packet,
@@ -299,6 +300,42 @@ def test_continuous_normal_sample_is_bounded_evidence_on_operator_stop() -> None
     terminal = _exchange(parent, stop)
     assert terminal.kind is RuntimeMessageKind.TERMINAL
     assert terminal.payload.evidence.metrics["tiltRad"] == 0.1
+    host._stop.set()
+    host._put_message(None)
+    thread.join(timeout=1)
+    parent.close()
+
+
+def test_stop_immediately_after_ack_waits_for_operation_retirement() -> None:
+    host, runtime, parent, thread = _active_host()
+    original = host._handle_message
+
+    def finish_after_ack(message: RuntimeMessage) -> bool:
+        result = original(message)
+        if message.kind is RuntimeMessageKind.STATUS:
+            time.sleep(0.005)
+        return result
+
+    host._handle_message = finish_after_ack
+    status = RuntimeMessage(
+        kind="STATUS",
+        generation=7,
+        operationSequence=1,
+        taskId="1" * 32,
+        payload=StatusRequestPayload(),
+    )
+    assert _exchange(parent, status).kind is RuntimeMessageKind.STATUS
+    stop = RuntimeMessage(
+        kind="ZERO_AND_STOP",
+        generation=7,
+        operationSequence=2,
+        taskId="1" * 32,
+        payload=ZeroAndStopPayload(reason="OPERATOR_CANCELLED"),
+    )
+    terminal = _exchange(parent, stop)
+    assert terminal.kind is RuntimeMessageKind.TERMINAL
+    assert terminal.payload.evidence.stopReason == "OPERATOR_CANCELLED"
+    assert runtime.emergency_stop_calls == []
     host._stop.set()
     host._put_message(None)
     thread.join(timeout=1)

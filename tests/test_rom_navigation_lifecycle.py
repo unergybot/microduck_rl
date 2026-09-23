@@ -12,6 +12,8 @@ from mjlab_microduck.rom.navigation.installation import Installation
 from mjlab_microduck.rom.navigation_service import NavigationTaskService
 from mjlab_microduck.rom.service import (
     InvalidParameters,
+    NavigationIdentityMismatch,
+    NavigationTaskNotRunning,
     RobotBusy,
     StaleCommand,
     TaskConflict,
@@ -64,7 +66,25 @@ def test_navigation_shares_v1_owner_and_forbids_v1_renewal(service, walk_request
     assert nav.renew_lease(request.taskId, lease)["state"] == "RUNNING"
     with pytest.raises(StaleCommand):
         nav.renew_lease(request.taskId, lease)
+    with pytest.raises(NavigationIdentityMismatch):
+        nav.renew_lease(
+            request.taskId,
+            NavigationLeaseRequest(
+                taskId=request.taskId,
+                proposalDigest="sha256:" + "f" * 64,
+                sequence=2,
+            ),
+        )
     nav.cancel_task(request.taskId)
+    with pytest.raises(NavigationTaskNotRunning):
+        nav.renew_lease(
+            request.taskId,
+            NavigationLeaseRequest(
+                taskId=request.taskId,
+                proposalDigest=request.proposalDigest,
+                sequence=2,
+            ),
+        )
 
 
 def test_uncertain_submit_is_recovered_without_new_authority(service):
