@@ -55,6 +55,18 @@ class InvalidParameters(SimulatorServiceError):
     code = "PARAMETER_INVALID"
 
 
+class NavigationIdentityMismatch(InvalidParameters):
+    code = "NAVIGATION_IDENTITY_MISMATCH"
+
+
+class NavigationAuthorizationChanged(InvalidParameters):
+    code = "NAVIGATION_AUTHORIZATION_CHANGED"
+
+
+class NavigationTaskNotRunning(InvalidParameters):
+    code = "NAVIGATION_TASK_NOT_RUNNING"
+
+
 class PreconditionFailed(SimulatorServiceError):
     code = "PRECONDITION_FAILED"
 
@@ -318,16 +330,24 @@ class SimulatorTaskService:
                 or active.request.taskId != task_id
                 or not active.continuous
             ):
+                if navigation:
+                    raise NavigationTaskNotRunning("task is not running")
                 raise InvalidParameters("task does not accept continuous commands")
             is_navigation = hasattr(active.request, "navigation")
             if is_navigation != navigation:
+                if navigation:
+                    raise NavigationAuthorizationChanged("task protocol mismatch")
                 raise InvalidParameters("task protocol mismatch")
             if is_navigation and (
                 command.parameters != active.request.parameters
                 or command.leaseMs != active.request.leaseMs
             ):
-                raise InvalidParameters("navigation authorization cannot change motion")
+                raise NavigationAuthorizationChanged(
+                    "navigation authorization cannot change motion"
+                )
             if snapshot.state != "RUNNING" or active.stop_claimed:
+                if navigation:
+                    raise NavigationTaskNotRunning("task is not running")
                 raise InvalidParameters("task is not running")
             if (
                 active.deadline is not None
@@ -370,6 +390,8 @@ class SimulatorTaskService:
                     owner = True
         if expired:
             self._request_stop(active, "LEASE_EXPIRED")
+            if navigation:
+                raise NavigationTaskNotRunning("task is not running")
             raise InvalidParameters("task is not running")
         assert pending is not None
         if not owner:
@@ -849,6 +871,9 @@ __all__ = [
     "BundleMismatch",
     "CommandSequenceConflict",
     "InvalidParameters",
+    "NavigationAuthorizationChanged",
+    "NavigationIdentityMismatch",
+    "NavigationTaskNotRunning",
     "NotReady",
     "PreconditionFailed",
     "RobotBusy",

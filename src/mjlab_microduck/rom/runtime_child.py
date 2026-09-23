@@ -185,6 +185,8 @@ class RuntimeChildHost:
         self._last_sequence = -1
         self._last_request: RuntimeMessage | None = None
         self._operation_active = threading.Event()
+        self._operation_idle = threading.Event()
+        self._operation_idle.set()
         self._event_sequence = 0
         self._completion_claim = threading.Lock()
         self._sample_thread: threading.Thread | None = None
@@ -288,10 +290,15 @@ class RuntimeChildHost:
                 message.kind is RuntimeMessageKind.ZERO_AND_STOP
                 and self._operation_active.is_set()
             ):
-                with self._state_lock:
-                    self._last_request = message
-                self._request_safety("RUNTIME_UNRESPONSIVE")
-                return
+                # A START/COMMAND acknowledgement can reach the parent just
+                # before its operation thread clears the active flag. Give that
+                # completed operation a bounded chance to retire before treating
+                # STOP as a genuinely unresponsive native operation.
+                if not self._operation_idle.wait(0.02):
+                    with self._state_lock:
+                        self._last_request = message
+                    self._request_safety("RUNTIME_UNRESPONSIVE")
+                    return
             self._put_message(message)
 
     def _put_message(self, message: RuntimeMessage | _RuntimeCompletion | None) -> None:
@@ -1102,6 +1109,7 @@ class RuntimeChildHost:
                 outcome.append(self._handle_message(current))
 
             if message.kind is not RuntimeMessageKind.VIEWER:
+                self._operation_idle.clear()
                 self._operation_active.set()
             operation = threading.Thread(
                 target=execute, name="runtime-child-operation", daemon=True
@@ -1111,6 +1119,7 @@ class RuntimeChildHost:
             while operation.is_alive() and not self._safety_requested.wait(wait_slice):
                 pass
             self._operation_active.clear()
+            self._operation_idle.set()
             if self._safety_requested.is_set() or not result or not result[0]:
                 break
         if self._safety_requested.is_set() and not self._safety_complete.is_set():

@@ -14,6 +14,7 @@ from .navigation_contracts import (
 )
 from .service import (
     InvalidParameters,
+    NavigationIdentityMismatch,
     NotReady,
     StaleCommand,
     TaskConflict,
@@ -192,7 +193,9 @@ class NavigationTaskService:
                 renewal.taskId != task_id
                 or renewal.proposalDigest != request.proposalDigest
             ):
-                raise InvalidParameters("navigation authorization identity mismatch")
+                raise NavigationIdentityMismatch(
+                    "navigation authorization identity mismatch"
+                )
             previous = self.service._store.command_sequence(task_id)
             if previous is not None and renewal.sequence <= previous:
                 raise StaleCommand("navigation sequence must increase")

@@ -85,14 +85,14 @@ def submit(client, landmark="door"):
     return request
 
 
-def terminal(client, request, renew=False):
+def terminal(client, request, renew=False, timeout_s=20):
     task_id = request["taskId"]
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + timeout_s
     sequence = 1
     while time.monotonic() < deadline:
         state = client.get(f"/v2/navigation/tasks/{task_id}").json()
         if state["state"] not in {"RUNNING", "PENDING", "CANCELLING"}:
-            return state
+            return state, sequence - 1
         if renew:
             response = client.put(
                 f"/v2/navigation/tasks/{task_id}/lease",
@@ -102,27 +102,45 @@ def terminal(client, request, renew=False):
                     "sequence": sequence,
                 },
             )
-            assert response.status_code == 200, response.json()
+            if response.status_code != 200:
+                # The task may complete between the status read and renewal.
+                settled = client.get(f"/v2/navigation/tasks/{task_id}").json()
+                if settled["state"] not in {"RUNNING", "PENDING", "CANCELLING"}:
+                    return settled, sequence - 1
+                pytest.fail(
+                    f"renewal {sequence} rejected while task was running: "
+                    f"{response.json()}"
+                )
             sequence += 1
         time.sleep(0.1)
-    pytest.fail("isolated runtime did not terminate within twenty seconds")
+    pytest.fail("isolated runtime did not terminate within the test deadline")
 
 
-@pytest.mark.parametrize("operation", ["cancel", "expire", "arrive"])
+@pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])
 def test_real_child_navigation_stop_and_arrival(live, tmp_path, operation):
     request = submit(live, "home" if operation == "arrive" else "door")
     if operation == "cancel":
         response = live.post(f"/v2/navigation/tasks/{request['taskId']}/cancel")
         assert response.status_code == 200, response.json()
-    result = terminal(live, request, renew=operation == "arrive")
+    result, renewals = terminal(
+        live,
+        request,
+        renew=operation in {"arrive", "moving_arrive"},
+        timeout_s=60 if operation == "moving_arrive" else 20,
+    )
     (tmp_path / "acceptance.json").write_text(
-        json.dumps({"operation": operation, "result": result}, indent=2)
+        json.dumps(
+            {"operation": operation, "result": result, "renewals": renewals},
+            indent=2,
+        )
     )
     metrics = result["evidence"]["metrics"]
     assert metrics["stoppedCommandConfirmed"] is True
-    if operation == "arrive":
+    if operation in {"arrive", "moving_arrive"}:
         assert result["state"] == "SUCCEEDED"
         assert metrics["arrived"] is True
+        if operation == "moving_arrive":
+            assert renewals >= 3
     elif operation == "cancel":
         assert result["state"] == "CANCELLED"
     else:
