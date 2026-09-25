@@ -19,6 +19,15 @@ describes the sensor class; these rays do not model cover-glass crosstalk,
 multi-target returns, lighting, per-zone status, or calibrated timing. The
 ToF scan does **not** currently alter navigation commands.
 
+The corrected experimental head camera can render a known 8 cm radius marker
+at roughly 0.8 m. `navigation.vision.detect_red_sphere` extracts only RGB
+pixels and estimates range from marker size and camera field of view. Its
+real-bundle test compares that estimate with hidden simulator truth outside
+the detector. This proves the camera can provide a landmark observation; it
+does not yet provide a navigation pose correction. The marker is a solid red
+sphere, not an AprilTag. It cannot recover full marker pose, and the current
+extractor rejects cropped or non-round blobs.
+
 ## Reproduction
 
 ```bash
@@ -37,8 +46,17 @@ were no mapped-obstacle collisions. This **fails promotion**. The production
 simulator remains on `SIM_GROUND_TRUTH`, which passed 50/50 cases at the same
 scene and profile.
 
-Next work must add real visual landmark observations or another bounded
-position correction, use measured head joints to place ToF returns in the
+Terminal evaluator measurements explain the false positives: turn seed 7 had
+estimated/true heading errors 0.123/0.175 rad, detour seed 2 had
+estimated/true position errors to goal 0.060/0.095 m, and detour seeds 3 and
+5 had true heading errors 0.152 and 0.177 rad. The approved thresholds are
+0.08 m and 0.15 rad. Merely tightening integration numerics did not improve
+these cases, so that experiment was discarded. The qualifier now records both
+estimated and true terminal margins for future uncertainty-gate work; only
+the evaluator reads truth.
+
+Next work must add mapped visual landmarks and bounded pose correction from
+their observations, use measured head joints to place ToF returns in the
 body frame, classify floor and invalid ranges, and reject arrival whenever
 uncertainty can exceed the remaining tolerance. Re-run the full 50-case suite
 and fault injections before considering a runtime feature flag.

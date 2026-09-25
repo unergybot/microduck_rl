@@ -137,16 +137,28 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
     evidence = runtime.safe_stop(handle, sample.stopReason or "QUALIFICATION_END")
     actual = runtime._base_position()
     goal = scene.landmarks[scenario["landmarkId"]]
+    true_distance = math.hypot(goal.x - actual[0], goal.y - actual[1])
+    true_heading_error = abs(
+        math.atan2(
+            math.sin(goal.yaw - runtime._yaw_rad()),
+            math.cos(goal.yaw - runtime._yaw_rad()),
+        )
+    )
     truth_arrival = (
-        math.hypot(goal.x - actual[0], goal.y - actual[1]) <= profile.arrivalToleranceM
-        and abs(
+        true_distance <= profile.arrivalToleranceM
+        and true_heading_error <= profile.headingToleranceRad
+    )
+    estimated_distance = None
+    estimated_heading_error = None
+    if pose_source == "SIM_SENSOR_ODOMETRY":
+        estimated = runtime._navigation_estimator.pose
+        estimated_distance = math.hypot(goal.x - estimated.x, goal.y - estimated.y)
+        estimated_heading_error = abs(
             math.atan2(
-                math.sin(goal.yaw - runtime._yaw_rad()),
-                math.cos(goal.yaw - runtime._yaw_rad()),
+                math.sin(goal.yaw - estimated.yaw),
+                math.cos(goal.yaw - estimated.yaw),
             )
         )
-        <= profile.headingToleranceRad
-    )
     expected = scenario["expectedReason"]
     passed = (
         sample.terminalState == "SUCCEEDED"
@@ -178,6 +190,10 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         "reason": sample.stopReason,
         "collision": collision,
         "truthArrival": truth_arrival,
+        "trueDistanceM": true_distance,
+        "trueHeadingErrorRad": true_heading_error,
+        "estimatedDistanceM": estimated_distance,
+        "estimatedHeadingErrorRad": estimated_heading_error,
         "maxPositionErrorM": max_position_error
         if pose_source == "SIM_SENSOR_ODOMETRY"
         else None,

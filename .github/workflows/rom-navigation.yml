@@ -26,7 +26,10 @@ jobs:
           PYTHONPATH=src uv run --no-sync python -m pytest \
             tests/test_rom_navigation_api.py \
             tests/test_rom_navigation_lifecycle.py \
-            tests/test_rom_navigation_contracts.py -q
+            tests/test_rom_navigation_contracts.py \
+            tests/test_rom_navigation_vision.py \
+            tests/test_rom_sensor_odometry.py \
+            tests/test_rom_tof.py -q
       - name: Child stop handoff
         run: |
           PYTHONPATH=src uv run --no-sync python -m pytest \
