@@ -47,7 +47,10 @@ class VisualOdometry:
         return (
             self.visual_updates >= 2
             and math.isfinite(self.last_visual_time)
-            and 0 <= now - self.last_visual_time <= 1.0
+            # The door turn briefly points the head away from the last tag.
+            # Keep the fix valid for that measured interval only while the
+            # independently integrated pose has barely moved since capture.
+            and 0 <= now - self.last_visual_time <= 1.5
             and math.hypot(
                 pose.x - self.last_visual_pose.x,
                 pose.y - self.last_visual_pose.y,

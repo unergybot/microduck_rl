@@ -12,6 +12,7 @@ import pytest
 from mjlab_microduck.rom.navigation.apriltag import (
     PROBE_TAGS,
     AprilTagPose,
+    detect_tag_corners,
     observe_planar_pose,
 )
 
@@ -30,7 +31,7 @@ def test_probe_world_corners_have_known_square_size():
     not os.environ.get("MICRODUCK_TEST_BUNDLE"), reason="requires real bundle"
 )
 def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
-    pytest.importorskip("cv2")
+    cv2 = pytest.importorskip("cv2")
     from mjlab_microduck.rom.main import load_verified_bundle
     from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
     from mjlab_microduck.rom.navigation.installation import Installation
@@ -102,6 +103,43 @@ def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
                 assert abs(observed.pose.yaw - yaw) < 0.03
                 assert observed.reprojection_error_px < 1.0
                 assert observed.tag_pixels > 30
+                if (x, y, yaw, tag_id) == (0.0, 0.0, 0.0, 0):
+                    rng = np.random.default_rng(19)
+                    noisy = np.clip(
+                        rgb.astype(np.int16)
+                        + rng.normal(0, 4, rgb.shape).astype(np.int16),
+                        0,
+                        255,
+                    ).astype(np.uint8)
+                    blurred = cv2.GaussianBlur(noisy, (3, 3), 0.6)
+                    noisy_fix = observe_planar_pose(
+                        blurred,
+                        model=model,
+                        marker_world_corners=probe.world_corners(),
+                        marker_id=tag_id,
+                        joint_qpos_indices=runtime._joint_qpos_indices,
+                        joint_positions=runtime._encoder_positions(),
+                    )
+                    assert noisy_fix is not None
+                    assert math.hypot(noisy_fix.pose.x, noisy_fix.pose.y) < 0.03
+                    occluded = rgb.copy()
+                    corners = detect_tag_corners(rgb)[0][0]
+                    x_min = int(corners[:, 0].min())
+                    x_mid = int(corners[:, 0].mean())
+                    y_min = int(corners[:, 1].min())
+                    y_max = int(corners[:, 1].max())
+                    occluded[y_min : y_max + 1, x_min : x_mid + 1] = 0
+                    assert (
+                        observe_planar_pose(
+                            occluded,
+                            model=model,
+                            marker_world_corners=probe.world_corners(),
+                            marker_id=tag_id,
+                            joint_qpos_indices=runtime._joint_qpos_indices,
+                            joint_positions=runtime._encoder_positions(),
+                        )
+                        is None
+                    )
             blank = np.zeros((480, 640, 3), dtype=np.uint8)
             assert (
                 observe_planar_pose(
@@ -127,7 +165,8 @@ def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
             estimator.last_visual_time = 1.0
             estimator.last_visual_pose = origin
             assert estimator.can_confirm_arrival(1.7, origin)
-            assert not estimator.can_confirm_arrival(2.01, origin)
+            assert estimator.can_confirm_arrival(2.3, origin)
+            assert not estimator.can_confirm_arrival(2.51, origin)
             assert not estimator.can_confirm_arrival(1.7, Pose(x=0.04, y=0.0, yaw=0.0))
             assert not estimator.can_confirm_arrival(1.7, Pose(x=0.0, y=0.0, yaw=0.1))
             monkeypatch.setattr(

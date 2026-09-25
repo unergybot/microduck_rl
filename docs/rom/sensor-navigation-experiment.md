@@ -53,16 +53,16 @@ The pose observer rejects cropped tags, projected edges under 90 px, >2 px
 corner reprojection error, implausible trunk tilt/height, and a single visual
 correction larger than 0.08 m or 0.1 rad. Accepted corrections are blended at
 half gain to avoid repeated entry/exit at the tight arrival radius. Arrival
-requires an accepted tag observation within 1 s, with no more than 0.03 m
+requires an accepted tag observation within 1.5 s, with no more than 0.03 m
 and 0.08 rad estimated motion since that observation. A missing-tag fault
 injection fails `LOCALIZATION_FAILED` with a confirmed stopped command. Static
-rendered tests cover translated and rotated
-robot poses at the desk and door; their image-based position error was under
-0.02 m and yaw error under 0.03 rad in the tested poses. This is still an
-ideal pinhole simulator with generated markers and no camera noise, motion
-blur, tag placement survey error, or physical marker installation. The two
-three extra approach/goal markers are visual-only fixtures, not physical room
-objects or a TAIROS map update.
+rendered tests cover translated and rotated robot poses at the desk and door;
+their image-based position error was under 0.02 m and yaw error under 0.03 rad
+in the tested poses. One static image also tolerates small Gaussian pixel noise
+and blur, while half-tag occlusion is rejected. Dynamic image noise, motion
+blur, tag placement survey error, and physical marker installation remain
+unqualified. The three extra approach/goal markers are visual-only fixtures,
+not physical room objects or a TAIROS map update.
 
 To run this candidate locally, install the `rom-vision` dependency group and
 choose `--pose-source SIM_VISUAL_ODOMETRY` in the qualification command below.
@@ -97,8 +97,31 @@ these cases, so that experiment was discarded. The qualifier now records both
 estimated and true terminal margins for future uncertainty-gate work; only
 the evaluator reads truth.
 
-Next work must qualify the AprilTag candidate across the full deterministic
-suite and held-out seeds, add camera noise, motion blur, occlusion, and delayed
+The first AprilTag 50-case pass reached 48/50. Both failures were safe
+`LOCALIZATION_FAILED` stops at the door turn after the last tag had left the
+camera view for 1.22–1.30 s; hidden truth and estimated pose were already
+inside the goal tolerance, and motion since the final tag fix was less than
+0.002 m and 0.047 rad in the reproduced failure. The arrival confirmation
+window was extended to 1.5 s while retaining the 0.03 m and 0.08 rad
+post-fix motion bounds.
+
+The revised source passed all 50 calibrated runs: ten each of open walking,
+door turning, desk detour, unreachable-path rejection, and in-place settling.
+The evaluator found zero mapped-obstacle contacts and zero false arrivals;
+every run confirmed a stopped command. Maximum hidden-truth pose error was
+0.0443 m and 0.0887 rad, below the 0.08 m and 0.15 rad evaluation bounds.
+Every reachable run accepted at least 11 visual fixes. The report is
+`/home/mcao/production/data/microduck/reports/experiments/2026-09-25-visual-apriltag-doorfix-50.json`;
+its runtime source digest matches the revised source. The earlier 48/50 report
+is retained at `.../2026-09-25-visual-apriltag-blended-50.json` for comparison.
+Five held-out seeds (10–14) across all five scenarios also passed 25/25,
+with zero mapped-obstacle contacts, zero false arrivals, and confirmed stopped
+commands. Maximum hidden-truth pose error in that batch was 0.0311 m and
+0.0620 rad. Its report is
+`/home/mcao/production/data/microduck/reports/experiments/2026-09-25-visual-apriltag-heldout-25.json`;
+the runtime source digest matches the 50-run report.
+
+Next work must add dynamic camera noise, motion blur, occlusion, and delayed
 frame tests, and measure an uncertainty bound for arrival. ToF still needs
 head-joint reprojection and invalid/floor classification before it can alter
 commands. Physical marker placement and actual hardware odometry require a
