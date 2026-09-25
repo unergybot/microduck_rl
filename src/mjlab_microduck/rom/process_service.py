@@ -518,6 +518,15 @@ class SimulatorTaskService:
         if self._supervisor.readiness():
             return True, ()
         snap = self._supervisor.snapshot()
+        if (
+            snap.child_healthy
+            and not snap.slot_releasable
+            and snap.quarantine_reason is None
+            and self._readiness_failure_reason is None
+        ):
+            with self._lock:
+                if self._active is not None:
+                    return False, ("ROBOT_BUSY",)
         return False, (
             snap.quarantine_reason
             or self._readiness_failure_reason

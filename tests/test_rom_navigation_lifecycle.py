@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 import pytest
 from mjlab_microduck.rom.navigation_contracts import (
@@ -85,6 +86,24 @@ def test_navigation_shares_v1_owner_and_forbids_v1_renewal(service, walk_request
                 sequence=2,
             ),
         )
+
+
+def test_active_navigation_reports_busy_instead_of_runtime_unavailable(service):
+    nav, request = nav_and_request(service)
+    nav.create_task(request)
+    capabilities = nav.capabilities()
+    assert capabilities["ready"] is False
+    assert capabilities["reasonCodes"] == ["ROBOT_BUSY"]
+    assert capabilities["environment"]["valid"] is True
+    assert nav.get_task(request.taskId)["state"] == "RUNNING"
+    nav.cancel_task(request.taskId)
+
+
+def test_occupied_slot_without_active_task_is_not_robot_busy(service, monkeypatch):
+    snapshot = replace(service._supervisor.snapshot(), slot_releasable=False)
+    monkeypatch.setattr(service._supervisor, "snapshot", lambda: snapshot)
+    monkeypatch.setattr(service._supervisor, "readiness", lambda: False)
+    assert service.motion_readiness() == (False, ("RUNTIME_UNAVAILABLE",))
 
 
 def test_uncertain_submit_is_recovered_without_new_authority(service):
