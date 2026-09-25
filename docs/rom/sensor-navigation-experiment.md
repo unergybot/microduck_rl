@@ -28,6 +28,15 @@ does not yet provide a navigation pose correction. The marker is a solid red
 sphere, not an AprilTag. It cannot recover full marker pose, and the current
 extractor rejects cropped or non-round blobs.
 
+A separate, unmerged pair-marker trial at the desk exposed the remaining
+geometry problem. The desk top occluded markers at 0.42–0.54 m height. Raising
+them to 0.65 m made both visible from Home, but they left the 45° camera view
+as the robot approached within about 1.2 m of the markers. RGB sphere-size
+range estimates were 2.8–5.2% shorter than the evaluator's true camera-to-marker
+distance over tested starting positions. This placement and uncalibrated
+measurement cannot support an arrival gate. The trial's runtime and scene
+changes were discarded; only the single-marker RGB observation probe remains.
+
 ## Reproduction
 
 ```bash
