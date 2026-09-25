@@ -87,6 +87,17 @@ def test_navigation_shares_v1_owner_and_forbids_v1_renewal(service, walk_request
         )
 
 
+def test_active_navigation_reports_busy_instead_of_runtime_unavailable(service):
+    nav, request = nav_and_request(service)
+    nav.create_task(request)
+    capabilities = nav.capabilities()
+    assert capabilities["ready"] is False
+    assert capabilities["reasonCodes"] == ["ROBOT_BUSY"]
+    assert capabilities["environment"]["valid"] is True
+    assert nav.get_task(request.taskId)["state"] == "RUNNING"
+    nav.cancel_task(request.taskId)
+
+
 def test_uncertain_submit_is_recovered_without_new_authority(service):
     nav, request = nav_and_request(service)
     nav.create_task(request)
