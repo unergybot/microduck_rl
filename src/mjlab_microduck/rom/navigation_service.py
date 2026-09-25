@@ -47,6 +47,13 @@ class NavigationTaskService:
             return {"ready": False, "reasonCodes": ["LOCOMOTION_UNAVAILABLE"]}
         ready, reasons = self.service.motion_readiness()
         status = self.service.observe_navigation()
+        reason_codes = list(reasons)
+        if status.fallen or status.limp:
+            for reason in status.health.get("reasonCodes", []):
+                if reason not in reason_codes:
+                    reason_codes.append(reason)
+            if not reason_codes:
+                reason_codes.append("FALLEN" if status.fallen else "ROBOT_LIMP")
         installation = self.installation
         generation = self.service.runtime_generation()
         with self.lock:
@@ -96,7 +103,7 @@ class NavigationTaskService:
         return {
             "reachableLandmarks": reachable,
             "ready": ready and environment.valid,
-            "reasonCodes": list(reasons),
+            "reasonCodes": reason_codes,
             "environment": environment.model_dump(mode="json", by_alias=True),
             "profile": installation.profile.model_dump(mode="json"),
             "bundleVersion": self.service._bundle.bundleVersion,

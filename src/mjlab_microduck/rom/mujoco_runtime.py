@@ -484,7 +484,15 @@ class MicroduckMujocoRuntime:
             )
         ):
             raise ValueError("ONNX policy normalization provenance is invalid")
-        session = ort.InferenceSession(content, providers=["CPUExecutionProvider"])
+        # The actor is small and invoked once per 20 ms control tick. The
+        # default CPU pool can spawn one worker per host core, causing
+        # scheduling spikes on a shared simulator host.
+        session_options = ort.SessionOptions()
+        session_options.intra_op_num_threads = 1
+        session_options.inter_op_num_threads = 1
+        session = ort.InferenceSession(
+            content, sess_options=session_options, providers=["CPUExecutionProvider"]
+        )
         inputs = session.get_inputs()
         outputs = session.get_outputs()
         if len(inputs) != 1 or inputs[0].shape != [1, 61]:
