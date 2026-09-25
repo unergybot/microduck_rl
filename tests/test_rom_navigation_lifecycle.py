@@ -133,3 +133,22 @@ def test_idle_environment_reads_actual_runtime_pose(service, runtime):
     )
     nav, _ = nav_and_request(service)
     assert nav.capabilities()["environment"]["pose"]["x"] == 0.23
+
+
+def test_limp_navigation_capabilities_report_runtime_failure(service, runtime):
+    original = runtime.status
+    runtime.status = lambda: original().model_copy(
+        update={
+            "limp": True,
+            "health": {
+                "ready": False,
+                "healthy": False,
+                "reasonCodes": ["CONTROL_LOOP_OVERRUN"],
+            },
+        }
+    )
+    nav, _ = nav_and_request(service)
+    capabilities = nav.capabilities()
+    assert capabilities["ready"] is False
+    assert capabilities["environment"]["valid"] is False
+    assert "CONTROL_LOOP_OVERRUN" in capabilities["reasonCodes"]
