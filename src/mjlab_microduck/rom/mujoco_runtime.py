@@ -135,6 +135,7 @@ class MicroduckMujocoRuntime:
         self._navigation_installation = None
         self._navigator = None
         self._navigation_result = None
+        self._navigation_estimator = None
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -272,6 +273,19 @@ class MicroduckMujocoRuntime:
         if self._viewer is None:
             raise ValueError("viewer unavailable")
         return self._viewer.model
+
+    def set_navigation_estimator_for_qualification(self, initial_pose):
+        """Select sensor-only controller pose in an offline candidate evaluation."""
+        if self._realtime or self._navigation_installation is None:
+            raise ValueError(
+                "sensor estimator requires offline navigation qualification"
+            )
+        from .navigation.sensor_odometry import SensorOdometry
+
+        with self._lock:
+            if self._active_handle is not None:
+                raise RuntimeError("cannot change estimator during a task")
+            self._navigation_estimator = SensorOdometry(self._model, initial_pose)
 
     def viewer_model_text(self):
         if self._viewer is None:
@@ -1144,26 +1158,39 @@ class MicroduckMujocoRuntime:
                 self._require_finite_simulation_state()
                 if self._navigator is not None:
                     from .navigation_contracts import Pose
+                    from .navigation.sensor_odometry import SensorFailure
 
-                    position = self._base_position()
                     now = self._clock()
-                    result = self._navigator.update(
-                        Pose(
+                    if self._navigation_estimator is None:
+                        position = self._base_position()
+                        pose = Pose(
                             x=float(position[0]),
                             y=float(position[1]),
                             yaw=self._yaw_rad(),
-                        ),
-                        now=now,
-                        captured=now,
-                        speed=float(
+                        )
+                        speed = float(
                             np.linalg.norm(
                                 self._data.qvel[
                                     self._free_qvel_address : self._free_qvel_address
                                     + 2
                                 ]
                             )
-                        ),
-                        yaw_rate=float(self._base_angular_velocity()[2]),
+                        )
+                        yaw_rate = float(self._base_angular_velocity()[2])
+                    else:
+                        try:
+                            pose, speed, yaw_rate = self._navigation_estimator.update(
+                                self._data
+                            )
+                        except SensorFailure:
+                            self._fail_locked("LOCALIZATION_FAILED")
+                            return
+                    result = self._navigator.update(
+                        pose,
+                        now=now,
+                        captured=now,
+                        speed=speed,
+                        yaw_rate=yaw_rate,
                     )
                     self._navigation_result = result
                     self._requested_command, self._command, self._limiting_reason = (
