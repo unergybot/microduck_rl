@@ -65,6 +65,9 @@ rom = [
     "pydantic==2.12.5",
     "uvicorn==0.52.4",
 ]
+rom-vision = [
+    "opencv-contrib-python-headless==5.0.0.93",
+]
 
 [project.entry-points."mjlab.tasks"]
 mjlab_microduck = "mjlab_microduck.tasks"

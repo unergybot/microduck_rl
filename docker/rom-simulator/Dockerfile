@@ -65,6 +65,7 @@ COPY src/mjlab_microduck/rom/__init__.py \
     src/mjlab_microduck/rom/viewer.py \
     /app/src/mjlab_microduck/rom/
 COPY src/mjlab_microduck/rom/navigation/__init__.py \
+    src/mjlab_microduck/rom/navigation/apriltag.py \
     src/mjlab_microduck/rom/navigation/environment.py \
     src/mjlab_microduck/rom/navigation/follower.py \
     src/mjlab_microduck/rom/navigation/grid.py \
@@ -72,6 +73,8 @@ COPY src/mjlab_microduck/rom/navigation/__init__.py \
     src/mjlab_microduck/rom/navigation/planner.py \
     src/mjlab_microduck/rom/navigation/sensor_odometry.py \
     src/mjlab_microduck/rom/navigation/tof.py \
+    src/mjlab_microduck/rom/navigation/vision.py \
+    src/mjlab_microduck/rom/navigation/visual_odometry.py \
     /app/src/mjlab_microduck/rom/navigation/
 COPY schemas/microduck-policy-bundle-v1.schema.json \
     schemas/microduck-simulator-api-v1.openapi.yaml \

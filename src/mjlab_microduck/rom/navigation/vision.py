@@ -6,7 +6,9 @@ reserved for the qualification evaluator and are never detection inputs.
 
 import math
 from dataclasses import dataclass
+from xml.etree import ElementTree as ET
 
+import mujoco
 import numpy as np
 
 
@@ -70,3 +72,25 @@ def detect_red_sphere(
         range_m=range_m,
         pixel_count=count,
     )
+
+
+def correct_head_camera_xml(snapshot_root):
+    """Correct exported optical axes in an offline model snapshot."""
+    found = 0
+    for model_path in sorted(snapshot_root.rglob("*.xml")):
+        tree = ET.parse(model_path)
+        camera = tree.find(".//camera[@name='head_camera']")
+        if camera is None:
+            continue
+        original = np.fromstring(camera.get("quat", "1 0 0 0"), sep=" ")
+        if original.shape != (4,):
+            raise ValueError("invalid head camera quaternion")
+        corrected = np.zeros(4)
+        mujoco.mju_mulQuat(
+            corrected, original, np.array([0.0, 2**-0.5, -(2**-0.5), 0.0])
+        )
+        camera.set("quat", " ".join(map(str, corrected)))
+        tree.write(model_path, encoding="utf-8")
+        found += 1
+    if found != 1:
+        raise ValueError("offline model must have exactly one head camera")

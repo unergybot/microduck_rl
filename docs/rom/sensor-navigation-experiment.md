@@ -35,7 +35,40 @@ as the robot approached within about 1.2 m of the markers. RGB sphere-size
 range estimates were 2.8–5.2% shorter than the evaluator's true camera-to-marker
 distance over tested starting positions. This placement and uncalibrated
 measurement cannot support an arrival gate. The trial's runtime and scene
-changes were discarded; only the single-marker RGB observation probe remains.
+changes were discarded; the single-marker RGB observation probe was retained.
+
+## AprilTag pose-correction candidate
+
+An additional **offline-only** candidate renders five 14 cm `tag36h11`
+markers with a white border in the calibrated scene: one on the desk front,
+one above the door header, and three visual-only approach/goal markers. The
+camera renders 640×480 RGB every 0.2 s. OpenCV detects tag corners and solves
+camera pose against their declared world coordinates. A separate MuJoCo
+kinematic state at the origin uses the 14 measured joint positions to recover
+the camera-to-trunk transform; it never reads the live base pose. IMU-site
+odometry propagates between images. The evaluator alone compares that estimate
+with live MuJoCo truth.
+
+The pose observer rejects cropped tags, projected edges under 90 px, >2 px
+corner reprojection error, implausible trunk tilt/height, and a single visual
+correction larger than 0.08 m or 0.1 rad. Accepted corrections are blended at
+half gain to avoid repeated entry/exit at the tight arrival radius. Arrival
+requires an accepted tag observation within 1 s, with no more than 0.03 m
+and 0.08 rad estimated motion since that observation. A missing-tag fault
+injection fails `LOCALIZATION_FAILED` with a confirmed stopped command. Static
+rendered tests cover translated and rotated
+robot poses at the desk and door; their image-based position error was under
+0.02 m and yaw error under 0.03 rad in the tested poses. This is still an
+ideal pinhole simulator with generated markers and no camera noise, motion
+blur, tag placement survey error, or physical marker installation. The two
+three extra approach/goal markers are visual-only fixtures, not physical room
+objects or a TAIROS map update.
+
+To run this candidate locally, install the `rom-vision` dependency group and
+choose `--pose-source SIM_VISUAL_ODOMETRY` in the qualification command below.
+Its report includes OpenCV version, tag world corners, and generated texture
+hashes. The promotion gate remains the full deterministic scenario suite plus
+noise, occlusion, and delayed-frame qualification.
 
 ## Reproduction
 
@@ -64,8 +97,9 @@ these cases, so that experiment was discarded. The qualifier now records both
 estimated and true terminal margins for future uncertainty-gate work; only
 the evaluator reads truth.
 
-Next work must add mapped visual landmarks and bounded pose correction from
-their observations, use measured head joints to place ToF returns in the
-body frame, classify floor and invalid ranges, and reject arrival whenever
-uncertainty can exceed the remaining tolerance. Re-run the full 50-case suite
-and fault injections before considering a runtime feature flag.
+Next work must qualify the AprilTag candidate across the full deterministic
+suite and held-out seeds, add camera noise, motion blur, occlusion, and delayed
+frame tests, and measure an uncertainty bound for arrival. ToF still needs
+head-joint reprojection and invalid/floor classification before it can alter
+commands. Physical marker placement and actual hardware odometry require a
+separate qualification before any runtime feature flag or robot deployment.

@@ -130,12 +130,14 @@ class MicroduckMujocoRuntime:
         realtime: bool = True,
         monotonic_clock: Callable[[], float] = time.monotonic,
         _navigation_candidate=None,
+        _apriltag_experiment: bool = False,
     ) -> None:
         self._root = Path(bundle_root).resolve()
         self._navigation_installation = None
         self._navigator = None
         self._navigation_result = None
         self._navigation_estimator = None
+        self._apriltag_experiment = _apriltag_experiment
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -195,6 +197,9 @@ class MicroduckMujocoRuntime:
         self._rng = np.random.default_rng(0)
         self._reset_perturbation_l2_rad = 0.0
 
+        if _apriltag_experiment and (realtime or _navigation_candidate is None):
+            raise ValueError("AprilTag probe requires offline navigation qualification")
+
         artifact_bytes = self._verify_bundle_identity_and_artifacts()
         model_closure = self._derive_model_closure(artifact_bytes)
         self._snapshot = tempfile.TemporaryDirectory(prefix="microduck-mjcf-")
@@ -218,6 +223,14 @@ class MicroduckMujocoRuntime:
             from .navigation.environment import add_geometry
 
             add_geometry(model_path, self._navigation_installation.scene)
+        if _apriltag_experiment:
+            from .navigation.environment import add_apriltag_probe
+            from .navigation.vision import correct_head_camera_xml
+
+            if self._navigation_installation is None:
+                raise ValueError("AprilTag probe requires validated navigation scene")
+            add_apriltag_probe(model_path, self._navigation_installation.scene)
+            correct_head_camera_xml(snapshot_root)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
         if self._navigation_installation is not None:
             # An unknown fixed collider would invalidate the approved map.
@@ -274,7 +287,7 @@ class MicroduckMujocoRuntime:
             raise ValueError("viewer unavailable")
         return self._viewer.model
 
-    def set_navigation_estimator_for_qualification(self, initial_pose):
+    def set_navigation_estimator_for_qualification(self, initial_pose, *, visual=False):
         """Select sensor-only controller pose in an offline candidate evaluation."""
         if self._realtime or self._navigation_installation is None:
             raise ValueError(
@@ -285,7 +298,16 @@ class MicroduckMujocoRuntime:
         with self._lock:
             if self._active_handle is not None:
                 raise RuntimeError("cannot change estimator during a task")
-            self._navigation_estimator = SensorOdometry(self._model, initial_pose)
+            if visual:
+                if not self._apriltag_experiment:
+                    raise ValueError("visual estimator requires AprilTag candidate")
+                from .navigation.visual_odometry import VisualOdometry
+
+                self._navigation_estimator = VisualOdometry(
+                    self._model, initial_pose, self._joint_qpos_indices
+                )
+            else:
+                self._navigation_estimator = SensorOdometry(self._model, initial_pose)
 
     def viewer_model_text(self):
         if self._viewer is None:
@@ -1192,6 +1214,17 @@ class MicroduckMujocoRuntime:
                         speed=speed,
                         yaw_rate=yaw_rate,
                     )
+                    if (
+                        result.arrived
+                        and self._navigation_estimator is not None
+                        and hasattr(self._navigation_estimator, "can_confirm_arrival")
+                        and not self._navigation_estimator.can_confirm_arrival(
+                            float(self._data.time), pose
+                        )
+                    ):
+                        from .navigation.follower import Command
+
+                        result = Command(reason="LOCALIZATION_FAILED")
                     self._navigation_result = result
                     self._requested_command, self._command, self._limiting_reason = (
                         self._command_for(

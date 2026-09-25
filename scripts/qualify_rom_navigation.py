@@ -6,6 +6,7 @@ describes the requested batch, not a mandatory fifty-run promotion threshold.
 """
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -42,6 +43,7 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         realtime=False,
         monotonic_clock=lambda: clock[0],
         _navigation_candidate=installed,
+        _apriltag_experiment=pose_source == "SIM_VISUAL_ODOMETRY",
     )
     with runtime._lock:
         runtime._reset_model_locked(np.random.default_rng(seed))
@@ -55,8 +57,11 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
             math.sin(yaw / 2),
         ]
         mujoco.mj_forward(runtime._model, runtime._data)
-    if pose_source == "SIM_SENSOR_ODOMETRY":
-        runtime.set_navigation_estimator_for_qualification(Pose(x=x, y=y, yaw=yaw))
+    if pose_source != "SIM_GROUND_TRUTH":
+        runtime.set_navigation_estimator_for_qualification(
+            Pose(x=x, y=y, yaw=yaw),
+            visual=pose_source == "SIM_VISUAL_ODOMETRY",
+        )
     proposal = {
         "schema": "ROM_MICRODUCK_NAVIGATION_PROPOSAL_V2",
         "actionCode": "NAVIGATE_TO_LANDMARK",
@@ -108,7 +113,7 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
     for _ in range(profile.deadlineMs // 20 + 2):
         clock[0] += 0.02
         sample = runtime.sample(handle)
-        if pose_source == "SIM_SENSOR_ODOMETRY":
+        if pose_source != "SIM_GROUND_TRUTH":
             estimated = runtime._navigation_estimator.pose
             actual = runtime._base_position()
             max_position_error = max(
@@ -150,7 +155,7 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
     )
     estimated_distance = None
     estimated_heading_error = None
-    if pose_source == "SIM_SENSOR_ODOMETRY":
+    if pose_source != "SIM_GROUND_TRUTH":
         estimated = runtime._navigation_estimator.pose
         estimated_distance = math.hypot(goal.x - estimated.x, goal.y - estimated.y)
         estimated_heading_error = abs(
@@ -170,18 +175,26 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         and not collision
         and evidence.metrics.get("stoppedCommandConfirmed") is True
         and (
-            pose_source != "SIM_SENSOR_ODOMETRY"
-            or expected != "ARRIVED"
-            or truth_arrival
+            pose_source == "SIM_GROUND_TRUTH" or expected != "ARRIVED" or truth_arrival
         )
         and (
-            pose_source != "SIM_SENSOR_ODOMETRY"
+            pose_source == "SIM_GROUND_TRUTH"
             or (
                 max_position_error <= profile.arrivalToleranceM
                 and max_yaw_error <= profile.headingToleranceRad
             )
         )
     )
+    estimator = runtime._navigation_estimator
+    visual_updates = getattr(estimator, "visual_updates", None)
+    visual_rejections = getattr(estimator, "visual_rejections", None)
+    last_visual_time = getattr(estimator, "last_visual_time", None)
+    if last_visual_time is not None and not math.isfinite(last_visual_time):
+        last_visual_time = None
+    last_tag_id = getattr(estimator, "last_tag_id", None)
+    if hasattr(estimator, "close"):
+        estimator.close()
+    runtime._snapshot.cleanup()
     return {
         "scenario": scenario["name"],
         "seed": seed,
@@ -195,11 +208,13 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         "estimatedDistanceM": estimated_distance,
         "estimatedHeadingErrorRad": estimated_heading_error,
         "maxPositionErrorM": max_position_error
-        if pose_source == "SIM_SENSOR_ODOMETRY"
+        if pose_source != "SIM_GROUND_TRUTH"
         else None,
-        "maxYawErrorRad": max_yaw_error
-        if pose_source == "SIM_SENSOR_ODOMETRY"
-        else None,
+        "maxYawErrorRad": max_yaw_error if pose_source != "SIM_GROUND_TRUTH" else None,
+        "visualUpdates": visual_updates,
+        "visualRejections": visual_rejections,
+        "lastVisualTimeS": last_visual_time,
+        "lastTagId": last_tag_id,
         "durationS": clock[0],
         "evidence": evidence.metrics,
     }
@@ -220,7 +235,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--pose-source",
-        choices=("SIM_GROUND_TRUTH", "SIM_SENSOR_ODOMETRY"),
+        choices=("SIM_GROUND_TRUTH", "SIM_SENSOR_ODOMETRY", "SIM_VISUAL_ODOMETRY"),
         default="SIM_GROUND_TRUTH",
     )
     args = parser.parse_args()
@@ -248,6 +263,28 @@ def main():
         "profileDigest": digest(profile),
         "runs": [],
     }
+    if args.pose_source == "SIM_VISUAL_ODOMETRY":
+        import cv2
+
+        from mjlab_microduck.rom.navigation.apriltag import PROBE_TAGS, tag_texture
+
+        report["vision"] = {
+            "dictionary": "DICT_APRILTAG_36h11",
+            "opencvVersion": cv2.__version__,
+            "imageHeight": 480,
+            "imageWidth": 640,
+            "capturePeriodS": 0.2,
+            "tags": [
+                {
+                    "id": probe.tag_id,
+                    "worldCorners": probe.world_corners().tolist(),
+                    "textureSha256": hashlib.sha256(
+                        tag_texture(probe.tag_id).tobytes()
+                    ).hexdigest(),
+                }
+                for probe in PROBE_TAGS
+            ],
+        }
     for scenario in data["scenarios"]:
         for seed in seeds:
             try:
