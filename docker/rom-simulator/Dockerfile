@@ -70,6 +70,8 @@ COPY src/mjlab_microduck/rom/navigation/__init__.py \
     src/mjlab_microduck/rom/navigation/grid.py \
     src/mjlab_microduck/rom/navigation/installation.py \
     src/mjlab_microduck/rom/navigation/planner.py \
+    src/mjlab_microduck/rom/navigation/sensor_odometry.py \
+    src/mjlab_microduck/rom/navigation/tof.py \
     /app/src/mjlab_microduck/rom/navigation/
 COPY schemas/microduck-policy-bundle-v1.schema.json \
     schemas/microduck-simulator-api-v1.openapi.yaml \
