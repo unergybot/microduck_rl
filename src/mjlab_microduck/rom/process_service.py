@@ -524,7 +524,9 @@ class SimulatorTaskService:
             and snap.quarantine_reason is None
             and self._readiness_failure_reason is None
         ):
-            return False, ("ROBOT_BUSY",)
+            with self._lock:
+                if self._active is not None:
+                    return False, ("ROBOT_BUSY",)
         return False, (
             snap.quarantine_reason
             or self._readiness_failure_reason
