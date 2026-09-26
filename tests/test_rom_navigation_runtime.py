@@ -208,7 +208,10 @@ def test_v2_desk_and_door_are_physical_only_during_navigation(tmp_path, monkeypa
     runtime.safe_stop(ordinary_handle, "TEST_END")
 
 
-def test_v2_unknown_static_collider_invalidates_navigation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("geom_type", ["box", "plane"])
+def test_v2_unknown_static_collider_invalidates_navigation(
+    tmp_path, monkeypatch, geom_type
+):
     from xml.etree import ElementTree as ET
     from mjlab_microduck.rom.navigation import environment
 
@@ -219,7 +222,7 @@ def test_v2_unknown_static_collider_invalidates_navigation(tmp_path, monkeypatch
         tree = ET.parse(model_path)
         ET.SubElement(
             tree.getroot().find("worldbody"), "geom",
-            name="unmapped_wall", type="box", pos="1.5 1.5 0.1",
+            name="unmapped_wall", type=geom_type, pos="1.5 1.5 0.1",
             size="0.05 0.05 0.1", contype="1", conaffinity="1",
         )
         tree.write(model_path)

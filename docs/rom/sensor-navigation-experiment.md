@@ -187,7 +187,7 @@ The reports are private at
 and
 `/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-visual-odometry.json`.
 They share `runtimeSourceDigest`
-`sha256:f979ff7a5c0a4d9eb96f7b150da567502ceec50374f7bbf0dfc0316081c5c27d`,
+`sha256:a31f88b8aab86aed1467109d09b32ab086d1dded709ca529e379f63682dc3a15`,
 `scenarioDigest`
 `sha256:949f1353441d5e0218fbd8f43bc00971a5daed7fc26a566242c0d612d1d87c1a`,
 `mapDigest`

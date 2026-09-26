@@ -254,10 +254,19 @@ class MicroduckMujocoRuntime:
                 colliding = (
                     self._model.geom_contype[geom] or self._model.geom_conaffinity[geom]
                 )
+                expected_floor = (
+                    self._model.geom_bodyid[geom] == 0
+                    and self._model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_PLANE
+                    and mujoco.mj_id2name(
+                        self._model, mujoco.mjtObj.mjOBJ_GEOM, geom
+                    ) == "floor"
+                    and np.allclose(self._model.geom_pos[geom], (0, 0, 0))
+                    and np.allclose(self._model.geom_quat[geom], (1, 0, 0, 0))
+                )
                 if (
                     static
                     and colliding
-                    and self._model.geom_type[geom] != mujoco.mjtGeom.mjGEOM_PLANE
+                    and not expected_floor
                     and geom not in self._v2_collision_ids
                 ):
                     self._navigation_installation = None
