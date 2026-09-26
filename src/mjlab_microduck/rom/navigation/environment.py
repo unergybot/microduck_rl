@@ -162,7 +162,9 @@ def add_apriltag_probe(model_path, scene):
     from .apriltag import PROBE_TAGS, tag_texture
 
     expected = {"home": (0.0, 0.0), "desk": (1.0, 0.0), "door": (0.0, 1.0)}
-    if (
+    if getattr(scene, "revision", None) == V2_REVISION:
+        validate_v2_scene(scene)
+    elif (
         getattr(scene, "revision", None) != "microduck-navigation-calibration-v1"
         or any(
             name not in scene.landmarks
