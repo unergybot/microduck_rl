@@ -70,6 +70,7 @@ def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
             (1.0, 0.0, 0.0, 2),
             (0.0, -0.5, 0.0, 3),
             (0.0, 1.0, math.pi / 2, 4),
+            (0.7, 0.75, 0.0, 5),
         ]
         try:
             for x, y, yaw, tag_id in cases:
