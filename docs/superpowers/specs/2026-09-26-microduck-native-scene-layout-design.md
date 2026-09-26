@@ -55,9 +55,9 @@ nor occludes required visual tags from the qualified approach poses.
 
 AprilTag IDs, physical plane size, surveyed world poses, and their detection
 contract remain unchanged for v2. Their planes remain non-colliding. The
-calibrated-scene check for the AprilTag probe accepts both exact v1 and exact
-v2 scene contracts; it does not accept arbitrary scenes merely because they
-use one of those revision strings.
+calibrated-scene check for the AprilTag probe retains the existing v1 guard
+and accepts only the exact canonical v2 scene. The new revision string alone
+does not authorize an arbitrary v2 scene.
 
 ## Collision and display behavior
 
