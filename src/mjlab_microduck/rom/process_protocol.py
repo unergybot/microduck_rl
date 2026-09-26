@@ -214,7 +214,7 @@ class ErrorPayload(ContractModel):
 
 
 class ViewerRequestPayload(ContractModel):
-    resource: Literal["model", "frame"]
+    resource: Literal["model", "frame", "camera"]
     offset: int = Field(default=0, strict=True, ge=0, le=8 * 1024 * 1024)
     token: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 

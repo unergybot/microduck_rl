@@ -72,6 +72,16 @@ def test_visual_pose_source_is_explicitly_passed_to_production_child() -> None:
         supervisor.close()
 
 
+def test_camera_opt_in_is_explicitly_passed_to_production_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ROM_MICRODUCK_HEAD_CAMERA_ENABLED", "true")
+    supervisor = RuntimeProcessSupervisor(bundle_root="/bundle", bundle_digest=DIGEST)
+    try:
+        launch = supervisor._default_launch(17)
+        assert launch.env["ROM_MICRODUCK_HEAD_CAMERA_ENABLED"] == "true"
+    finally:
+        supervisor.close()
+
+
 def test_qualification_launch_uses_the_same_runtime_child_with_bounded_mode() -> None:
     supervisor = RuntimeProcessSupervisor(
         bundle_root="/candidate",

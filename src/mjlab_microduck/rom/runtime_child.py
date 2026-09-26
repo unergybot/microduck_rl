@@ -63,6 +63,7 @@ _ALLOWED_ENVIRONMENT = frozenset(
         "MUJOCO_GL",
         "OMP_NUM_THREADS",
         "PATH",
+        "ROM_MICRODUCK_HEAD_CAMERA_ENABLED",
         "ROM_MICRODUCK_NAVIGATION_POSE_SOURCE",
     }
 )
@@ -761,7 +762,9 @@ class RuntimeChildHost:
 
     def _viewer_reply(self, message):
         from uuid import uuid4
-        from .viewer import CHUNK_CHARS, encode_display, FRAME_MAX_BYTES
+
+        from .head_camera import encode_camera
+        from .viewer import CHUNK_CHARS, FRAME_MAX_BYTES, encode_display
 
         request = message.payload
         assert isinstance(request, ViewerRequestPayload)
@@ -776,10 +779,15 @@ class RuntimeChildHost:
                             uuid4().hex,
                             self._runtime.viewer_model_text(),
                         )
-                else:
+                elif request.resource == "frame":
                     entry = (
                         uuid4().hex,
                         encode_display(self._runtime.viewer_frame(), FRAME_MAX_BYTES),
+                    )
+                else:
+                    entry = (
+                        uuid4().hex,
+                        encode_display(encode_camera(self._runtime.viewer_camera()), 400000),
                     )
                 self._viewer_transfer[request.resource] = entry
             else:

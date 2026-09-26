@@ -674,9 +674,11 @@ def test_real_child_retires_blocked_fake_native_work_without_injected_lease(
     )
     child.close()
     try:
-        parent.settimeout(2)
+        # This includes a fresh Python/MuJoCo import in the subprocess; the
+        # native cleanup deadline itself remains 50 ms inside the harness.
+        parent.settimeout(5)
         assert parent.recv(65_537) == b""
-        assert process.wait(timeout=2) == 0
+        assert process.wait(timeout=5) == 0
     finally:
         if process.poll() is None:
             process.kill()
@@ -1092,6 +1094,24 @@ def test_environment_filtering_removes_unrelated_platform_configuration() -> Non
         check=True,
     )
     assert completed.stdout.strip() == "False False"
+
+
+def test_environment_filtering_preserves_camera_opt_in() -> None:
+    script = (
+        "import os; from mjlab_microduck.rom.runtime_child import clear_runtime_environment; "
+        "clear_runtime_environment(); "
+        "print(os.environ.get('ROM_MICRODUCK_HEAD_CAMERA_ENABLED'))"
+    )
+    environment = os.environ.copy()
+    environment["ROM_MICRODUCK_HEAD_CAMERA_ENABLED"] = "true"
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert completed.stdout.strip() == "true"
 
 
 def test_blocked_start_cannot_defeat_local_emergency_zero() -> None:

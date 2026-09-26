@@ -3,6 +3,32 @@ info:
   title: MicroDuck ROM Simulator API
   version: 1.0.0
 paths:
+  /v1/viewer/camera:
+    get:
+      summary: Viewer Camera
+      operationId: viewerCamera
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /v1/viewer/model:
     get:
       summary: Viewer Model
@@ -635,6 +661,10 @@ components:
           - BUNDLE_MISMATCH
           - ACTION_UNAVAILABLE
           - PARAMETER_INVALID
+          - NAVIGATION_LEASE_MALFORMED
+          - NAVIGATION_IDENTITY_MISMATCH
+          - NAVIGATION_AUTHORIZATION_CHANGED
+          - NAVIGATION_TASK_NOT_RUNNING
           - PRECONDITION_FAILED
           - ROBOT_BUSY
           - TASK_ID_CONFLICT

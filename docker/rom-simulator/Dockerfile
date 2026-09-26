@@ -45,6 +45,7 @@ COPY src/mjlab_microduck/rom/__init__.py \
     src/mjlab_microduck/rom/api.py \
     src/mjlab_microduck/rom/bundle.py \
     src/mjlab_microduck/rom/contracts.py \
+    src/mjlab_microduck/rom/head_camera.py \
     src/mjlab_microduck/rom/main.py \
     src/mjlab_microduck/rom/navigation_api.py \
     src/mjlab_microduck/rom/navigation_contracts.py \
