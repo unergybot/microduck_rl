@@ -11,6 +11,31 @@ import pytest
 from mjlab_microduck.rom.navigation.vision import detect_red_sphere
 
 
+def test_visual_arrival_waits_briefly_for_a_fresh_tag_fix():
+    from mjlab_microduck.rom.mujoco_runtime import gate_visual_arrival
+    from mjlab_microduck.rom.navigation.follower import Command
+    from mjlab_microduck.rom.navigation_contracts import Pose
+
+    class Estimator:
+        confirmed = False
+
+        def can_confirm_arrival(self, now, pose):
+            return self.confirmed
+
+    estimator = Estimator()
+    pose = Pose(x=1.0, y=0.0, yaw=0.0)
+    arrived = Command(arrived=True)
+    pending, started = gate_visual_arrival(arrived, estimator, 10.0, pose, None)
+    assert pending == Command() and started == 10.0
+    pending, started = gate_visual_arrival(arrived, estimator, 12.9, pose, started)
+    assert pending == Command() and started == 10.0
+    failed, started = gate_visual_arrival(arrived, estimator, 13.0, pose, started)
+    assert failed.reason == "LOCALIZATION_FAILED" and started == 10.0
+    estimator.confirmed = True
+    accepted, started = gate_visual_arrival(arrived, estimator, 13.1, pose, started)
+    assert accepted == arrived and started is None
+
+
 def test_red_sphere_requires_one_uncropped_round_blob():
     frame = np.zeros((240, 320, 3), dtype=np.uint8)
     rows, columns = np.ogrid[:240, :320]

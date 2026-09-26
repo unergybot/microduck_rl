@@ -114,6 +114,21 @@ def _motion(command: DeploymentCommand) -> dict[str, list[float]]:
     }
 
 
+def gate_visual_arrival(result, estimator, now, pose, waiting_since):
+    """Hold position while a settled visual arrival awaits one valid tag fix."""
+    from .navigation.follower import Command
+
+    if not result.arrived:
+        return result, None
+    if estimator.can_confirm_arrival(now, pose):
+        return result, None
+    if waiting_since is None:
+        waiting_since = now
+    if now - waiting_since >= 3.0:
+        return Command(reason="LOCALIZATION_FAILED"), waiting_since
+    return Command(), waiting_since
+
+
 _JOINT_TARGET_MARGIN_RAD = 1e-3
 
 
@@ -146,6 +161,7 @@ class MicroduckMujocoRuntime:
         self._apriltag_experiment = _apriltag_experiment
         self._navigation_pose_source = navigation_pose_source
         self._visual_bootstrap_started_at = None
+        self._visual_arrival_wait_started_at = None
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -911,6 +927,7 @@ class MicroduckMujocoRuntime:
                 if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY":
                     self._navigation_estimator = None
                     self._visual_bootstrap_started_at = float(self._data.time)
+                    self._visual_arrival_wait_started_at = None
                 self._navigator = Navigator(
                     navigation.proposal.scene,
                     navigation.proposal.profile,
@@ -1299,16 +1316,19 @@ class MicroduckMujocoRuntime:
                             yaw_rate=yaw_rate,
                         )
                     if (
-                        result.arrived
+                        self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
                         and self._navigation_estimator is not None
                         and hasattr(self._navigation_estimator, "can_confirm_arrival")
-                        and not self._navigation_estimator.can_confirm_arrival(
-                            float(self._data.time), pose
-                        )
                     ):
-                        from .navigation.follower import Command
-
-                        result = Command(reason="LOCALIZATION_FAILED")
+                        result, self._visual_arrival_wait_started_at = (
+                            gate_visual_arrival(
+                                result,
+                                self._navigation_estimator,
+                                float(self._data.time),
+                                pose,
+                                self._visual_arrival_wait_started_at,
+                            )
+                        )
                     self._navigation_result = result
                     self._requested_command, self._command, self._limiting_reason = (
                         self._command_for(

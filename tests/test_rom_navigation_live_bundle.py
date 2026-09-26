@@ -185,6 +185,18 @@ def test_v2_visual_real_child_reaches_door_and_stops(live_v2_visual):
     assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
 
 
+def test_v2_visual_real_child_reaches_desk_after_door(live_v2_visual):
+    for landmark in ("door", "desk"):
+        request = submit(live_v2_visual, landmark)
+        result, renewals = terminal(live_v2_visual, request, renew=True, timeout_s=120)
+        assert renewals > 0
+        assert result["state"] == "SUCCEEDED", (
+            landmark, result["state"], result.get("stopReason"),
+            result.get("evidence"),
+        )
+        assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
+
+
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])
 def test_real_child_navigation_stop_and_arrival(live, tmp_path, operation):
     request = submit(live, "home" if operation == "arrive" else "door")
