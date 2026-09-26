@@ -131,13 +131,21 @@ class MicroduckMujocoRuntime:
         monotonic_clock: Callable[[], float] = time.monotonic,
         _navigation_candidate=None,
         _apriltag_experiment: bool = False,
+        navigation_pose_source: str = "SIM_GROUND_TRUTH",
     ) -> None:
+        if navigation_pose_source not in {
+            "SIM_GROUND_TRUTH",
+            "SIM_VISUAL_ODOMETRY",
+        }:
+            raise ValueError("unsupported navigation pose source")
         self._root = Path(bundle_root).resolve()
         self._navigation_installation = None
         self._navigator = None
         self._navigation_result = None
         self._navigation_estimator = None
         self._apriltag_experiment = _apriltag_experiment
+        self._navigation_pose_source = navigation_pose_source
+        self._visual_bootstrap_started_at = None
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -223,12 +231,12 @@ class MicroduckMujocoRuntime:
             from .navigation.environment import add_geometry
 
             add_geometry(model_path, self._navigation_installation.scene)
-        if _apriltag_experiment:
+        if _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY":
             from .navigation.environment import add_apriltag_probe
             from .navigation.vision import correct_head_camera_xml
 
             if self._navigation_installation is None:
-                raise ValueError("AprilTag probe requires validated navigation scene")
+                raise ValueError("AprilTag localization requires a calibrated scene")
             add_apriltag_probe(model_path, self._navigation_installation.scene)
             correct_head_camera_xml(snapshot_root)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
@@ -852,6 +860,12 @@ class MicroduckMujocoRuntime:
             self._rng = np.random.default_rng(self._applied_seed)
             spec = ACTION_RUNTIME_SPECS[action.actionCode]
             navigation = getattr(request, "navigation", None)
+            if (
+                navigation is not None
+                and getattr(request, "poseSource", "SIM_GROUND_TRUTH")
+                != self._navigation_pose_source
+            ):
+                raise ValueError("navigation pose source changed after task approval")
             for geom in range(self._model.ngeom):
                 name = (
                     mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
@@ -868,11 +882,19 @@ class MicroduckMujocoRuntime:
             if navigation is not None:
                 from .navigation.follower import Navigator
 
+                if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY":
+                    self._navigation_estimator = None
+                    self._visual_bootstrap_started_at = float(self._data.time)
                 self._navigator = Navigator(
                     navigation.proposal.scene,
                     navigation.proposal.profile,
                     navigation.proposal.landmarkId,
                     self._clock(),
+                    direct_goal_radius_m=(
+                        0.2
+                        if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                        else 0.0
+                    ),
                 )
             with self._emergency_guard:
                 self._reject_emergency_publication_locked(start_generation)
@@ -1136,29 +1158,34 @@ class MicroduckMujocoRuntime:
             )
 
     def _governed_loop(self) -> None:
-        while not self._stop_event.is_set() and not self._emergency_event.is_set():
-            started_at = self._clock()
-            with self._lock:
-                if self._last_loop_start is not None:
-                    interval = started_at - self._last_loop_start
-                    if interval > 0.0:
-                        self._loop_frequency_hz = 1.0 / interval
-                self._last_loop_start = started_at
-            self._control_step()
-            elapsed = self._clock() - started_at
-            with self._lock:
-                if elapsed > _CONTROL_PERIOD_S + 1e-9:
-                    self._loop_overruns += 1
-                    self._consecutive_overruns += 1
-                    if self._consecutive_overruns >= 3:
-                        self._fail_locked("CONTROL_LOOP_OVERRUN")
-                else:
-                    self._consecutive_overruns = 0
-            # Every deadline is based on this iteration's measured start.  A
-            # late iteration therefore never creates catch-up bursts.
-            remaining = started_at + _CONTROL_PERIOD_S - self._clock()
-            if remaining > 0.0:
-                self._wait(remaining)
+        try:
+            while not self._stop_event.is_set() and not self._emergency_event.is_set():
+                started_at = self._clock()
+                with self._lock:
+                    if self._last_loop_start is not None:
+                        interval = started_at - self._last_loop_start
+                        if interval > 0.0:
+                            self._loop_frequency_hz = 1.0 / interval
+                    self._last_loop_start = started_at
+                self._control_step()
+                elapsed = self._clock() - started_at
+                with self._lock:
+                    if elapsed > _CONTROL_PERIOD_S + 1e-9:
+                        self._loop_overruns += 1
+                        self._consecutive_overruns += 1
+                        if self._consecutive_overruns >= 3:
+                            self._fail_locked("CONTROL_LOOP_OVERRUN")
+                    else:
+                        self._consecutive_overruns = 0
+                # Every deadline is based on this iteration's measured start.
+                remaining = started_at + _CONTROL_PERIOD_S - self._clock()
+                if remaining > 0.0:
+                    self._wait(remaining)
+        finally:
+            if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY":
+                estimator = self._navigation_estimator
+                if estimator is not None and hasattr(estimator, "close"):
+                    estimator.close()
 
     def _control_step(self) -> None:
         with self._lock:
@@ -1183,6 +1210,21 @@ class MicroduckMujocoRuntime:
                     from .navigation.sensor_odometry import SensorFailure
 
                     now = self._clock()
+                    if (
+                        self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                        and self._navigation_estimator is None
+                    ):
+                        try:
+                            from .navigation.visual_odometry import VisualOdometry
+
+                            # The renderer is created on the same governed
+                            # thread that will use and close its GL context.
+                            self._navigation_estimator = VisualOdometry(
+                                self._model, None, self._joint_qpos_indices
+                            )
+                        except Exception:  # noqa: BLE001 - fail closed on camera setup.
+                            self._fail_locked("LOCALIZATION_FAILED")
+                            return
                     if self._navigation_estimator is None:
                         position = self._base_position()
                         pose = Pose(
@@ -1207,13 +1249,29 @@ class MicroduckMujocoRuntime:
                         except SensorFailure:
                             self._fail_locked("LOCALIZATION_FAILED")
                             return
-                    result = self._navigator.update(
-                        pose,
-                        now=now,
-                        captured=now,
-                        speed=speed,
-                        yaw_rate=yaw_rate,
+                    visual_bootstrap = (
+                        self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                        and not self._navigation_estimator.localized
                     )
+                    if visual_bootstrap:
+                        from .navigation.follower import Command
+
+                        assert self._visual_bootstrap_started_at is not None
+                        if (
+                            float(self._data.time) - self._visual_bootstrap_started_at
+                            >= 2.0
+                        ):
+                            result = Command(reason="LOCALIZATION_FAILED")
+                        else:
+                            result = Command()
+                    else:
+                        result = self._navigator.update(
+                            pose,
+                            now=now,
+                            captured=now,
+                            speed=speed,
+                            yaw_rate=yaw_rate,
+                        )
                     if (
                         result.arrived
                         and self._navigation_estimator is not None
@@ -1662,11 +1720,27 @@ class MicroduckMujocoRuntime:
         }
         if getattr(self._active_request, "navigation", None) is not None:
             result = self._navigation_result
+            estimated = self._navigation_estimator
+            if (
+                self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                and estimated is not None
+            ):
+                position_x = estimated.pose.x
+                position_y = estimated.pose.y
+                heading = estimated.pose.yaw
+            else:
+                position_x = float(base_position[0])
+                position_y = float(base_position[1])
+                heading = self._yaw_rad()
             return {
-                "provenance": "SIM_GROUND_TRUTH",
-                "x": round(float(base_position[0]), 6),
-                "y": round(float(base_position[1]), 6),
-                "yaw": round(self._yaw_rad(), 6),
+                "provenance": self._navigation_pose_source,
+                "x": round(position_x, 6),
+                "y": round(position_y, 6),
+                "yaw": round(heading, 6),
+                "localizationValid": bool(
+                    self._navigation_pose_source == "SIM_GROUND_TRUTH"
+                    or (estimated is not None and estimated.localized)
+                ),
                 "arrived": bool(result and result.arrived),
                 "fallen": self._fallen,
                 "steps": self._step_count,

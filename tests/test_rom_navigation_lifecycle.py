@@ -99,6 +99,18 @@ def test_active_navigation_reports_busy_instead_of_runtime_unavailable(service):
     nav.cancel_task(request.taskId)
 
 
+def test_visual_mode_labels_controller_and_persisted_task_source(service):
+    nav, request = nav_and_request(service)
+    nav.pose_source = "SIM_VISUAL_ODOMETRY"
+    capabilities = nav.capabilities()
+    assert capabilities["controllerPoseSource"] == "SIM_VISUAL_ODOMETRY"
+    assert capabilities["environment"]["provenance"] == "SIM_GROUND_TRUTH"
+    assert nav.create_task(request)["provenance"] == "SIM_VISUAL_ODOMETRY"
+    nav.pose_source = "SIM_GROUND_TRUTH"
+    assert nav.get_task(request.taskId)["provenance"] == "SIM_VISUAL_ODOMETRY"
+    nav.cancel_task(request.taskId)
+
+
 def test_occupied_slot_without_active_task_is_not_robot_busy(service, monkeypatch):
     snapshot = replace(service._supervisor.snapshot(), slot_releasable=False)
     monkeypatch.setattr(service._supervisor, "snapshot", lambda: snapshot)

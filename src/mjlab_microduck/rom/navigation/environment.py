@@ -116,7 +116,7 @@ def add_geometry(model_path, scene):
 
 
 def add_apriltag_probe(model_path, scene):
-    """Place visual-only AprilTags at calibrated desk and door (offline)."""
+    """Place calibrated visual-only AprilTags in the MuJoCo scene."""
     import cv2
 
     from .apriltag import PROBE_TAGS, tag_texture

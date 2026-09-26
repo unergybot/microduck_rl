@@ -57,6 +57,21 @@ def test_production_child_launch_uses_safe_module_path_and_null_stdio(
         supervisor.close()
 
 
+def test_visual_pose_source_is_explicitly_passed_to_production_child() -> None:
+    supervisor = RuntimeProcessSupervisor(
+        bundle_root="/bundle",
+        bundle_digest=DIGEST,
+        navigation_pose_source="SIM_VISUAL_ODOMETRY",
+    )
+    try:
+        launch = supervisor._default_launch(17)
+        assert launch.env["ROM_MICRODUCK_NAVIGATION_POSE_SOURCE"] == (
+            "SIM_VISUAL_ODOMETRY"
+        )
+    finally:
+        supervisor.close()
+
+
 def test_qualification_launch_uses_the_same_runtime_child_with_bounded_mode() -> None:
     supervisor = RuntimeProcessSupervisor(
         bundle_root="/candidate",

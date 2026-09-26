@@ -119,6 +119,41 @@ def test_near_destination_does_not_decay_into_policy_deadband():
     assert out.vx == 0.2 and out.yaw == 0.0
 
 
+def test_visual_final_approach_targets_landmark_when_segment_is_clear():
+    data = json.loads(
+        Path("tests/fixtures/navigation/calibrated-scenarios.json").read_text()
+    )
+    nav = Navigator(
+        Scene.model_validate(data["scene"]),
+        NavigationProfile.model_validate(data["profile"]),
+        "desk",
+        0.0,
+        direct_goal_radius_m=0.2,
+    )
+    nav.path = [(0.975, 0.025), (1.0, 0.0)]
+    nav.index = 0
+    out = nav.update(
+        Pose(x=0.92, y=0.03, yaw=0.0),
+        now=1.0,
+        captured=1.0,
+        speed=0.0,
+        yaw_rate=0.0,
+    )
+    assert nav.path == [(1.0, 0.0)]
+    assert out.reason is None
+
+    default_nav = Navigator(nav.scene, nav.profile, "desk", 0.0)
+    default_nav.path = [(0.975, 0.025), (1.0, 0.0)]
+    default_nav.update(
+        Pose(x=0.92, y=0.03, yaw=0.0),
+        now=1.0,
+        captured=1.0,
+        speed=0.0,
+        yaw_rate=0.0,
+    )
+    assert default_nav.path == [(0.975, 0.025), (1.0, 0.0)]
+
+
 def test_heading_drift_stops_advance_and_commands_full_bounded_turn():
     nav = setup_nav("home")
     out = nav.update(
