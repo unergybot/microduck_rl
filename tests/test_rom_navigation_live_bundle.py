@@ -106,7 +106,7 @@ def submit(client, landmark="door"):
     return request
 
 
-def terminal(client, request, renew=False, timeout_s=20, renew_interval_s=0.1):
+def terminal(client, request, renew=False, timeout_s=20):
     task_id = request["taskId"]
     deadline = time.monotonic() + timeout_s
     sequence = 1
@@ -133,7 +133,7 @@ def terminal(client, request, renew=False, timeout_s=20, renew_interval_s=0.1):
                     f"{response.json()}"
                 )
             sequence += 1
-        time.sleep(renew_interval_s)
+        time.sleep(0.3)
     pytest.fail("isolated runtime did not terminate within the test deadline")
 
 
@@ -143,9 +143,7 @@ def test_v2_real_child_reaches_mapped_landmark_and_stops(live_v2, landmark):
     assert environment["scene"]["revision"] == "microduck-navigation-calibration-v2"
     assert environment["mapDigest"] == digest(environment["scene"])
     request = submit(live_v2, landmark)
-    result, renewals = terminal(
-        live_v2, request, renew=True, timeout_s=90, renew_interval_s=0.3
-    )
+    result, renewals = terminal(live_v2, request, renew=True, timeout_s=90)
     assert renewals > 0
     assert result["state"] == "SUCCEEDED", result
     assert result["evidence"]["metrics"]["arrived"] is True
