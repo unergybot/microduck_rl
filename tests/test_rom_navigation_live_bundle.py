@@ -75,6 +75,18 @@ def live_v2(isolated_v2_settings):
         yield client
 
 
+@pytest.fixture
+def live_v2_visual(isolated_v2_settings):
+    isolated_v2_settings["ROM_MICRODUCK_NAVIGATION_POSE_SOURCE"] = (
+        "SIM_VISUAL_ODOMETRY"
+    )
+    with TestClient(create_configured_app(isolated_v2_settings)) as client:
+        client.headers["Authorization"] = (
+            "Bearer " + isolated_v2_settings["MICRODUCK_ROM_BEARER_TOKEN"]
+        )
+        yield client
+
+
 def submit(client, landmark="door"):
     caps = client.get("/v2/navigation/capabilities").json()
     assert caps["ready"], caps
@@ -148,6 +160,16 @@ def test_v2_real_child_reaches_mapped_landmark_and_stops(live_v2, landmark):
     assert result["state"] == "SUCCEEDED", result
     assert result["evidence"]["metrics"]["arrived"] is True
     assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
+
+
+def test_v2_visual_pose_source_survives_child_start(live_v2_visual):
+    caps = live_v2_visual.get("/v2/navigation/capabilities").json()
+    assert caps["controllerPoseSource"] == "SIM_VISUAL_ODOMETRY"
+    request = submit(live_v2_visual, "door")
+    response = live_v2_visual.post(
+        f"/v2/navigation/tasks/{request['taskId']}/cancel"
+    )
+    assert response.status_code == 200, response.json()
 
 
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])

@@ -749,6 +749,7 @@ class RuntimeProcessSupervisor:
         self._last_event_sequence = 0
         payload = StartPayload(
             navigation=getattr(request, "navigation", None),
+            poseSource=getattr(request, "poseSource", "SIM_GROUND_TRUTH"),
             actionCode=request.actionCode,
             bundleDigest=request.bundleDigest,
             parameters=request.parameters,
