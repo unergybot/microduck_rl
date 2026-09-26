@@ -3,6 +3,7 @@
 import math
 import uuid
 from threading import Lock
+from typing import Literal
 
 from .contracts import TaskCommandRequest, TaskCreateRequest
 from .navigation_contracts import (
@@ -26,13 +27,21 @@ class NavigationRuntimeRequest(TaskCreateRequest):
     """Private start material, deliberately not accepted by the public V1 model."""
 
     navigation: NavigationTaskRequest
+    poseSource: Literal["SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"] = (
+        "SIM_GROUND_TRUTH"
+    )
 
 
 class NavigationTaskService:
-    def __init__(self, service, installation, *, enabled=False):
+    def __init__(
+        self, service, installation, *, enabled=False, pose_source="SIM_GROUND_TRUTH"
+    ):
+        if pose_source not in {"SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"}:
+            raise ValueError("unsupported navigation pose source")
         self.service = service
         self.installation = installation
         self.enabled = enabled
+        self.pose_source = pose_source
         self.session = uuid.uuid4().hex
         self.lock = Lock()
         self.sequence = 0
@@ -110,6 +119,7 @@ class NavigationTaskService:
             "bundleId": self.service._bundle.bundleId,
             "qualificationDigest": installation.qualification_digest,
             "evaluationStatus": installation.evaluation_status,
+            "controllerPoseSource": self.pose_source,
         }
 
     def _request(self, task_id):
@@ -120,6 +130,8 @@ class NavigationTaskService:
 
     def _snapshot(self, task_id):
         request = self._request(task_id)
+        stored = self.service._store.request_content(task_id)
+        pose_source = stored.get("poseSource", "SIM_GROUND_TRUTH")
         snapshot = self.service.get_task(task_id).model_dump(mode="json", by_alias=True)
         snapshot.update(
             schema="MICRODUCK_NAVIGATION_STATE_V2",
@@ -128,7 +140,7 @@ class NavigationTaskService:
             binding=request.proposal.binding.model_dump(),
             mapDigest=request.proposal.mapDigest,
             navigationProfileDigest=request.proposal.navigationProfileDigest,
-            provenance="SIM_GROUND_TRUTH",
+            provenance=pose_source,
             landmarkId=request.proposal.landmarkId,
         )
         return snapshot
@@ -183,6 +195,7 @@ class NavigationTaskService:
             leaseMs=prop.profile.leaseMs,
             requestedBy=request.requestedBy,
             navigation=request,
+            poseSource=self.pose_source,
         )
         self.service.create_task(internal)
         return self._snapshot(request.taskId)

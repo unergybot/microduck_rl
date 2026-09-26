@@ -1,4 +1,4 @@
-"""Offline IMU propagation corrected by rendered AprilTag observations."""
+"""IMU propagation corrected by rendered AprilTag observations."""
 
 import math
 
@@ -13,7 +13,11 @@ from .sensor_odometry import SensorFailure, SensorOdometry
 class VisualOdometry:
     def __init__(self, model, initial_pose, joint_qpos_indices):
         self.model = model
-        self.odometry = SensorOdometry(model, initial_pose)
+        # Qualification may supply its known reset pose. The online controller
+        # must acquire its own pose from image pixels before issuing motion.
+        self.localized = initial_pose is not None
+        self.odometry = SensorOdometry(model, initial_pose or Pose(x=0, y=0, yaw=0))
+        self.bootstrap_pose = None
         self.joint_qpos_indices = np.asarray(joint_qpos_indices, dtype=np.int32)
         self.camera_id = mujoco.mj_name2id(
             model, mujoco.mjtObj.mjOBJ_CAMERA, "head_camera"
@@ -38,7 +42,7 @@ class VisualOdometry:
 
     def can_confirm_arrival(self, now, pose):
         """Require a recent landmark fix with little motion since its capture."""
-        if self.last_visual_pose is None:
+        if not self.localized or self.last_visual_pose is None:
             return False
         yaw_since_fix = math.atan2(
             math.sin(pose.yaw - self.last_visual_pose.yaw),
@@ -93,6 +97,27 @@ class VisualOdometry:
         tag_id, observed = min(
             candidates, key=lambda item: item[1].reprojection_error_px
         )
+        bootstrap_confirmed = False
+        if not self.localized:
+            if self.bootstrap_pose is None:
+                self._start_bootstrap(observed.pose, now, tag_id)
+                return self.pose, speed, yaw_rate
+            yaw_gap = math.atan2(
+                math.sin(observed.pose.yaw - self.bootstrap_pose.yaw),
+                math.cos(observed.pose.yaw - self.bootstrap_pose.yaw),
+            )
+            if (
+                now - self.last_visual_time > 1.0
+                or math.hypot(
+                    observed.pose.x - self.bootstrap_pose.x,
+                    observed.pose.y - self.bootstrap_pose.y,
+                ) > 0.03
+                or abs(yaw_gap) > 0.08
+            ):
+                self.visual_rejections += 1
+                self._start_bootstrap(observed.pose, now, tag_id)
+                return self.pose, speed, yaw_rate
+            bootstrap_confirmed = True
         delta_x = observed.pose.x - pose.x
         delta_y = observed.pose.y - pose.y
         delta_yaw = math.atan2(
@@ -104,6 +129,8 @@ class VisualOdometry:
         # exceeds the qualifier's position/yaw error envelope.
         if math.hypot(delta_x, delta_y) > 0.08 or abs(delta_yaw) > 0.1:
             self.visual_rejections += 1
+            if bootstrap_confirmed:
+                self._start_bootstrap(observed.pose, now, tag_id)
             return pose, speed, yaw_rate
         # A full per-frame snap can repeatedly cross the tight 8 cm arrival
         # boundary and reset settlement. Blend valid corrections while still
@@ -130,8 +157,21 @@ class VisualOdometry:
             ),
         )
         self.odometry.pose = fused_pose
+        if bootstrap_confirmed:
+            self.localized = True
         self.last_visual_time = now
         self.last_visual_pose = fused_pose
         self.last_tag_id = tag_id
         self.visual_updates += 1
         return fused_pose, speed, yaw_rate
+
+    def _start_bootstrap(self, pose, now, tag_id):
+        self.bootstrap_pose = pose
+        self.odometry.pose = pose
+        self.odometry.orientation = np.array(
+            [math.cos(pose.yaw / 2), 0.0, 0.0, math.sin(pose.yaw / 2)]
+        )
+        self.last_visual_time = now
+        self.last_visual_pose = pose
+        self.last_tag_id = tag_id
+        self.visual_updates = 1

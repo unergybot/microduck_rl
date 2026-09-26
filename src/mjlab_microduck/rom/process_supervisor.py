@@ -166,6 +166,7 @@ class RuntimeProcessSupervisor:
         terminal_retry_limit: int = 3,
         owner_thread_name: str = "microduck-runtime-supervisor",
         qualification_max_steps: int | None = None,
+        navigation_pose_source: str = "SIM_GROUND_TRUTH",
     ) -> None:
         if (
             min(operation_timeout_s, terminate_timeout_s, terminal_retry_delay_s) <= 0
@@ -178,6 +179,9 @@ class RuntimeProcessSupervisor:
             or not 100 <= qualification_max_steps <= 2_000
         ):
             raise ValueError("qualification step bound is invalid")
+        if navigation_pose_source not in {"SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"}:
+            raise ValueError("unsupported navigation pose source")
+        self._navigation_pose_source = navigation_pose_source
         self._bundle_root = str(bundle_root)
         self._bundle_digest = bundle_digest
         self._launch_factory = launch_factory or self._default_launch
@@ -290,10 +294,9 @@ class RuntimeProcessSupervisor:
                 "--qualification-max-steps",
                 str(self._qualification_max_steps),
             )
-        return ChildLaunch(
-            argv,
-            env={key: value for key, value in os.environ.items() if key in allowed},
-        )
+        environment = {key: value for key, value in os.environ.items() if key in allowed}
+        environment["ROM_MICRODUCK_NAVIGATION_POSE_SOURCE"] = self._navigation_pose_source
+        return ChildLaunch(argv, env=environment)
 
     @property
     def trace(self) -> tuple[str, ...]:

@@ -435,6 +435,11 @@ def create_configured_app(
 ):
     """Compose the verified concrete runtime, or remain explicitly fail-closed."""
     configuration = read_configuration(environ)
+    pose_source = environ.get(
+        "ROM_MICRODUCK_NAVIGATION_POSE_SOURCE", "SIM_GROUND_TRUTH"
+    )
+    if pose_source not in {"SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"}:
+        raise ValueError("unsupported navigation pose source")
     reasons: list[str] = []
     service: SimulatorTaskService | None = None
     bundle: PolicyBundle | None = None
@@ -469,6 +474,7 @@ def create_configured_app(
                     # can join an in-flight quarantine before SIGKILL/reap.
                     terminate_timeout_s=2.0,
                     owner_thread_name="microduck-runtime-supervisor-production",
+                    navigation_pose_source=pose_source,
                 )
             )
             service = SimulatorTaskService(
@@ -490,9 +496,10 @@ def create_configured_app(
                     configuration.bundle_dir, bundle.bundleDigest
                 )
             except Exception:
-                pass  # Missing navigation artifacts do not block V1 or platform startup.
+                # Missing navigation artifacts do not block V1 or startup.
+                pass
         service.navigation = NavigationTaskService(
-            service, installation, enabled=enabled
+            service, installation, enabled=enabled, pose_source=pose_source
         )
     app = create_app(service, configuration.bearer_token)
     app.state.task_service = service

@@ -63,6 +63,7 @@ _ALLOWED_ENVIRONMENT = frozenset(
         "MUJOCO_GL",
         "OMP_NUM_THREADS",
         "PATH",
+        "ROM_MICRODUCK_NAVIGATION_POSE_SOURCE",
     }
 )
 _ERROR_CODES = {
@@ -1155,12 +1156,23 @@ def main() -> int:
     termination = threading.Event()
     signal.signal(signal.SIGTERM, lambda _signum, _frame: termination.set())
     clear_runtime_environment()
+    pose_source = os.environ.get(
+        "ROM_MICRODUCK_NAVIGATION_POSE_SOURCE", "SIM_GROUND_TRUTH"
+    )
+    if pose_source not in {"SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"}:
+        raise SystemExit(2)
     if args.qualification_max_steps is not None and not (
         100 <= args.qualification_max_steps <= 2_000
     ):
         raise SystemExit(2)
     if args.qualification_max_steps is None:
-        host = RuntimeChildHost(control, bundle_root=args.bundle_root)
+        host = RuntimeChildHost(
+            control,
+            bundle_root=args.bundle_root,
+            runtime_factory=lambda root, bundle: MicroduckMujocoRuntime(
+                root, bundle, navigation_pose_source=pose_source
+            ),
+        )
     else:
         host = RuntimeChildHost(
             control,

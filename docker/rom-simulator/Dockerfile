@@ -9,7 +9,7 @@ ENV UV_LINK_MODE=copy \
 COPY --from=uv /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock LICENSE ./
-RUN uv sync --frozen --only-group rom --no-install-project
+RUN uv sync --frozen --only-group rom --only-group rom-vision --no-install-project
 
 FROM python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
 
@@ -23,9 +23,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
     MICRODUCK_ROM_BEARER_TOKEN_FILE=/run/secrets/microduck_rom_bearer_token \
     MICRODUCK_ROM_HOST=0.0.0.0 \
     MICRODUCK_ROM_ALLOW_WILDCARD_BIND=true \
-    MICRODUCK_ROM_PORT=8000
+    MICRODUCK_ROM_PORT=8000 \
+    MUJOCO_GL=egl
 
-RUN mkdir -p /bundle /state \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /bundle /state \
     && install -d -o 0 -g 0 -m 0755 /usr/local/libexec \
     && chown 10001:10001 /state
 
