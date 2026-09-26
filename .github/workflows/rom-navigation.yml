@@ -20,15 +20,25 @@ jobs:
           version: "0.12.7"
           python-version: "3.12"
       - name: Install ROM and test dependencies
-        run: uv sync --frozen --only-group rom --only-group dev --no-install-project
+        run: uv sync --frozen --only-group rom --only-group rom-vision --only-group dev --no-install-project
       - name: Navigation and lease contracts
         run: |
           PYTHONPATH=src uv run --no-sync python -m pytest \
             tests/test_rom_navigation_api.py \
             tests/test_rom_navigation_lifecycle.py \
-            tests/test_rom_navigation_contracts.py -q
+            tests/test_rom_navigation_contracts.py \
+            tests/test_rom_navigation_geometry.py \
+            tests/test_rom_navigation_vision.py \
+            tests/test_rom_apriltag.py \
+            tests/test_rom_sensor_odometry.py \
+            tests/test_rom_tof.py -q
       - name: Child stop handoff
         run: |
           PYTHONPATH=src uv run --no-sync python -m pytest \
             tests/test_rom_runtime_child.py \
             -k 'stop_immediately_after_ack or blocked_continuous_sample_retires_transport' -q
+      - name: Container source inventory
+        run: |
+          PYTHONPATH=src uv run --no-sync python -m pytest \
+            tests/test_rom_process_container.py tests/test_rom_qualification.py \
+            -k 'docker_context or dockerfile_copies_only_literal_host_files' -q
