@@ -6,6 +6,24 @@ from pathlib import Path
 
 from ..navigation_contracts import NavigationProfile, Scene, digest
 
+# These offline training/calibration helpers are not copied into the simulator
+# image. Qualification binds every Python module that is actually deployed.
+_NON_DEPLOYED_SOURCE = frozenset(
+    {
+        "flyvis_scenario_training.py",
+        "flyvis_scenarios.py",
+        "flyvis_tracking/__init__.py",
+        "flyvis_tracking/batch.py",
+        "flyvis_tracking/core.py",
+        "flyvis_tracking/experiment.py",
+        "flyvis_tracking/learning.py",
+        "flyvis_tracking/simulation.py",
+        "flyvis_tracking/vision.py",
+        "handoff.py",
+        "navigation/calibration.py",
+    }
+)
+
 
 @dataclass(frozen=True)
 class Installation:
@@ -109,13 +127,14 @@ def load(root, bundle_digest):
 
 
 def source_digest():
-    """Bind qualification to the complete simulator implementation, including safety IPC."""
+    """Bind qualification to the deployed simulator implementation."""
     import hashlib
 
     root = Path(__file__).resolve().parents[1]
     values = {
         str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(root.rglob("*.py"))
+        if path.relative_to(root).as_posix() not in _NON_DEPLOYED_SOURCE
     }
     return digest(values)
 

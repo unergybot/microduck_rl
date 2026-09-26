@@ -1,9 +1,22 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 
-from mjlab_microduck.rom.navigation.installation import load
+from mjlab_microduck.rom.navigation.installation import _NON_DEPLOYED_SOURCE, load
+
+
+def test_source_digest_covers_exactly_the_container_python_closure():
+    root = Path("src/mjlab_microduck/rom")
+    local = {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
+    dockerfile = Path("docker/rom-simulator/Dockerfile").read_text()
+    copied = {
+        path.removeprefix("src/mjlab_microduck/rom/")
+        for path in re.findall(r"src/mjlab_microduck/rom/[\w/]+\.py", dockerfile)
+    }
+    assert _NON_DEPLOYED_SOURCE <= local
+    assert local - _NON_DEPLOYED_SOURCE == copied
 
 
 def config(tmp_path):
