@@ -1,6 +1,6 @@
 """Opt-in isolated child-process acceptance against a real installed bundle.
 
-MICRODUCK_TEST_BUNDLE=/absolute/bundle PYTHONPATH=src python -m pytest
+MUJOCO_GL=egl MICRODUCK_TEST_BUNDLE=/absolute/bundle PYTHONPATH=src python -m pytest
     tests/test_rom_navigation_live_bundle.py -q
 """
 
@@ -27,6 +27,8 @@ pytestmark = pytest.mark.skipif(
 def isolated_settings(tmp_path):
     root = tmp_path / "bundle"
     shutil.copytree(os.environ["MICRODUCK_TEST_BUNDLE"], root)
+    root.chmod(0o700)
+    (root / "navigation.json").chmod(0o600)
     config = json.loads((root / "navigation.json").read_text())
     calibrated = json.loads(
         Path("tests/fixtures/navigation/calibrated-scenarios.json").read_text()
@@ -170,6 +172,17 @@ def test_v2_visual_pose_source_survives_child_start(live_v2_visual):
         f"/v2/navigation/tasks/{request['taskId']}/cancel"
     )
     assert response.status_code == 200, response.json()
+
+
+def test_v2_visual_real_child_reaches_door_and_stops(live_v2_visual):
+    request = submit(live_v2_visual, "door")
+    result, renewals = terminal(live_v2_visual, request, renew=True, timeout_s=90)
+    assert renewals > 0
+    assert result["state"] == "SUCCEEDED", (
+        result["state"], result.get("stopReason"), result.get("evidence"),
+        renewals, live_v2_visual.app.state.task_service._supervisor.trace[-15:]
+    )
+    assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
 
 
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])

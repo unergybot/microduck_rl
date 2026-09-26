@@ -183,11 +183,11 @@ fixes. Each of the ten unreachable visual runs acquired two fixes before
 returning `PATH_BLOCKED`.
 
 The reports are private at
-`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-ground-truth.json`
+`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-ground-truth-r2.json`
 and
-`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-visual-odometry.json`.
+`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-visual-odometry-r2.json`.
 They share `runtimeSourceDigest`
-`sha256:a31f88b8aab86aed1467109d09b32ab086d1dded709ca529e379f63682dc3a15`,
+`sha256:3c1611ab37787e37f171e3f7a44594b64f1e552e95d013f76eed5e445ea789b4`,
 `scenarioDigest`
 `sha256:949f1353441d5e0218fbd8f43bc00971a5daed7fc26a566242c0d612d1d87c1a`,
 `mapDigest`
