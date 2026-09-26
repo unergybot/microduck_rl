@@ -88,8 +88,8 @@ def test_v2_mujoco_colliders_match_desk_and_door_map_footprints(tmp_path):
 
     for name, x, y, half_x, half_y in (
         ("rom_navigation_obstacle_0", 0.5, 0.1, 0.1, 0.2),
-        ("rom_navigation_obstacle_1", -0.3, 1.0, 0.025, 0.025),
-        ("rom_navigation_obstacle_2", 0.3, 1.0, 0.025, 0.025),
+        ("rom_navigation_obstacle_1", -0.4, 1.0, 0.025, 0.025),
+        ("rom_navigation_obstacle_2", 0.4, 1.0, 0.025, 0.025),
     ):
         geom = model.geom(name)
         assert list(geom.pos[:2]) == pytest.approx([x, y])
@@ -98,7 +98,7 @@ def test_v2_mujoco_colliders_match_desk_and_door_map_footprints(tmp_path):
 
     header = model.geom("rom_navigation_obstacle_door_header")
     assert list(header.pos) == pytest.approx([0.0, 1.0, 0.39])
-    assert list(header.size) == pytest.approx([0.325, 0.025, 0.02])
+    assert list(header.size) == pytest.approx([0.425, 0.025, 0.02])
     assert header.pos[2] - header.size[2] == pytest.approx(0.37)
 
     names = v2_collision_geom_names(scene)
@@ -121,7 +121,10 @@ def test_v2_door_posts_block_map_without_closing_doorway():
         Path("src/mjlab_microduck/rom/navigation/calibrated_v2.json").read_text()
     )
     grid = Grid(scene, NavigationProfile.model_validate(fixture["profile"]))
-    assert not grid.free(-0.3, 1.0)
-    assert not grid.free(0.3, 1.0)
-    assert grid.free(0.0, 1.0)
+    assert not grid.free(-0.4, 1.0)
+    assert not grid.free(0.4, 1.0)
+    assert all(grid.free(x, 1.0) for x in (-0.1, -0.05, 0.0, 0.05, 0.1))
     assert grid.free(scene.landmarks["desk"].x, scene.landmarks["desk"].y)
+    unreachable = fixture["scenarios"][3]["start"]
+    assert not grid.free(*unreachable[:2])
+    assert unreachable[0] - scene.obstacles[0].maxX > fixture["profile"]["robotRadiusM"]

@@ -54,6 +54,27 @@ def live(isolated_settings):
         yield client
 
 
+@pytest.fixture
+def isolated_v2_settings(isolated_settings):
+    root = Path(isolated_settings["MICRODUCK_ROM_BUNDLE_DIR"])
+    config = json.loads((root / "navigation.json").read_text())
+    canonical = json.loads(
+        Path("src/mjlab_microduck/rom/navigation/calibrated_v2.json").read_text()
+    )
+    config.update(scene=canonical["scene"], profile=canonical["profile"])
+    (root / "navigation.json").write_text(json.dumps(config))
+    return isolated_settings
+
+
+@pytest.fixture
+def live_v2(isolated_v2_settings):
+    with TestClient(create_configured_app(isolated_v2_settings)) as client:
+        client.headers["Authorization"] = (
+            "Bearer " + isolated_v2_settings["MICRODUCK_ROM_BEARER_TOKEN"]
+        )
+        yield client
+
+
 def submit(client, landmark="door"):
     caps = client.get("/v2/navigation/capabilities").json()
     assert caps["ready"], caps
@@ -114,6 +135,19 @@ def terminal(client, request, renew=False, timeout_s=20):
             sequence += 1
         time.sleep(0.1)
     pytest.fail("isolated runtime did not terminate within the test deadline")
+
+
+@pytest.mark.parametrize("landmark", ["door", "desk"])
+def test_v2_real_child_reaches_mapped_landmark_and_stops(live_v2, landmark):
+    environment = live_v2.get("/v2/navigation/capabilities").json()["environment"]
+    assert environment["scene"]["revision"] == "microduck-navigation-calibration-v2"
+    assert environment["mapDigest"] == digest(environment["scene"])
+    request = submit(live_v2, landmark)
+    result, renewals = terminal(live_v2, request, renew=True, timeout_s=90)
+    assert renewals > 0
+    assert result["state"] == "SUCCEEDED", result
+    assert result["evidence"]["metrics"]["arrived"] is True
+    assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
 
 
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])

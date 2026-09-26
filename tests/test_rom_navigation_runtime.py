@@ -189,7 +189,7 @@ def test_v2_desk_and_door_are_physical_only_during_navigation(tmp_path, monkeypa
     )
     with runtime._lock:
         address = runtime._free_qpos_address
-        runtime._data.qpos[address : address + 3] = [0.3, 1.0, 0.12]
+        runtime._data.qpos[address : address + 3] = [0.4, 1.0, 0.12]
         mujoco.mj_forward(runtime._model, runtime._data)
         contacts = {
             mujoco.mj_id2name(runtime._model, mujoco.mjtObj.mjOBJ_GEOM, geom)

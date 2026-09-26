@@ -13,8 +13,8 @@
 ## Global Constraints
 
 - Keep `microduck-navigation-calibration-v1`, its installed map, and historical qualification valid.
-- v2 desk footprint: `[0.4, 0.6] x [-0.1, 0.3]` m; door posts: `[-0.325, -0.275] x [0.975, 1.025]` m and `[0.275, 0.325] x [0.975, 1.025]` m.
-- Keep `home`, `desk`, and `door` IDs/poses and the 0.55 m door opening. The approved 0.15 m robot radius, 0.05 m clearance, and 0.05 m grid half-cell diagonal leave the center grid cell free.
+- v2 desk footprint: `[0.4, 0.6] x [-0.1, 0.3]` m; door posts: `[-0.425, -0.375] x [0.975, 1.025]` m and `[0.375, 0.425] x [0.975, 1.025]` m.
+- Keep `home`, `desk`, and `door` IDs/poses and the 0.75 m door opening. The approved 0.15 m robot radius, 0.05 m clearance, and 0.05 m grid half-cell diagonal leave a five-cell corridor free for measured lateral sway.
 - AprilTag IDs/poses and 0.0875 m plane half extents remain unchanged; tags and landmark pads never collide.
 - Desk, posts, and overhead header collide for navigation; non-navigation actions retain collision-free scenery. v2 scenery remains visible in both modes.
 - Reject unmapped static colliders; do not change robot, policy, observation, actuator, or promote visual odometry automatically.

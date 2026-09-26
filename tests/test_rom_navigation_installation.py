@@ -15,8 +15,8 @@ def test_canonical_v2_scene_binds_the_desk_and_both_door_posts():
     assert scene.revision == "microduck-navigation-calibration-v2"
     assert [obstacle.model_dump() for obstacle in scene.obstacles] == [
         {"minX": 0.4, "maxX": 0.6, "minY": -0.1, "maxY": 0.3},
-        {"minX": -0.325, "maxX": -0.275, "minY": 0.975, "maxY": 1.025},
-        {"minX": 0.275, "maxX": 0.325, "minY": 0.975, "maxY": 1.025},
+        {"minX": -0.425, "maxX": -0.375, "minY": 0.975, "maxY": 1.025},
+        {"minX": 0.375, "maxX": 0.425, "minY": 0.975, "maxY": 1.025},
     ]
     assert {name: pose.model_dump() for name, pose in scene.landmarks.items()} == {
         "home": {"x": 0.0, "y": 0.0, "yaw": 0.0},
