@@ -94,7 +94,7 @@ def test_v2_mujoco_colliders_match_desk_and_door_map_footprints(tmp_path):
         geom = model.geom(name)
         assert list(geom.pos[:2]) == pytest.approx([x, y])
         assert list(geom.size[:2]) == pytest.approx([half_x, half_y])
-        assert geom.contype == geom.conaffinity == 0
+        assert geom.contype == geom.conaffinity == 1
 
     header = model.geom("rom_navigation_obstacle_door_header")
     assert list(header.pos) == pytest.approx([0.0, 1.0, 0.39])
@@ -111,7 +111,7 @@ def test_v2_mujoco_colliders_match_desk_and_door_map_footprints(tmp_path):
         }
     )
     for name in names:
-        assert model.geom(name).conaffinity == 0
+        assert model.geom(name).conaffinity == 1
     assert model.geom("rom_landmark_pad_2").conaffinity == 0
 
 

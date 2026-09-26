@@ -240,7 +240,14 @@ class MicroduckMujocoRuntime:
             add_apriltag_probe(model_path, self._navigation_installation.scene)
             correct_head_camera_xml(snapshot_root)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        self._v2_collision_ids = frozenset()
         if self._navigation_installation is not None:
+            from .navigation.environment import v2_collision_geom_names
+
+            self._v2_collision_ids = frozenset(
+                self._model.geom(name).id
+                for name in v2_collision_geom_names(self._navigation_installation.scene)
+            )
             # An unknown fixed collider would invalidate the approved map.
             for geom in range(self._model.ngeom):
                 static = self._model.body_weldid[self._model.geom_bodyid[geom]] == 0
@@ -251,9 +258,13 @@ class MicroduckMujocoRuntime:
                     static
                     and colliding
                     and self._model.geom_type[geom] != mujoco.mjtGeom.mjGEOM_PLANE
+                    and geom not in self._v2_collision_ids
                 ):
                     self._navigation_installation = None
                     break
+        for geom in self._v2_collision_ids:
+            self._model.geom_contype[geom] = 0
+            self._model.geom_conaffinity[geom] = 0
         self._data = mujoco.MjData(self._model)
         self._configure_model_addresses()
         self._validate_action_contract_semantics()
@@ -866,15 +877,21 @@ class MicroduckMujocoRuntime:
                 != self._navigation_pose_source
             ):
                 raise ValueError("navigation pose source changed after task approval")
-            for geom in range(self._model.ngeom):
-                name = (
-                    mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
-                )
-                if name.startswith("rom_navigation_obstacle_"):
+            if self._v2_collision_ids:
+                for geom in self._v2_collision_ids:
                     enabled = int(navigation is not None)
                     self._model.geom_contype[geom] = enabled
                     self._model.geom_conaffinity[geom] = enabled
-                    self._model.geom_rgba[geom, 3] = enabled
+            else:
+                for geom in range(self._model.ngeom):
+                    name = (
+                        mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
+                    )
+                    if name.startswith("rom_navigation_obstacle_"):
+                        enabled = int(navigation is not None)
+                        self._model.geom_contype[geom] = enabled
+                        self._model.geom_conaffinity[geom] = enabled
+                        self._model.geom_rgba[geom, 3] = enabled
             if navigation is None:
                 self._reset_model_locked(self._rng, spec.reset_profile)
             self._navigator = None

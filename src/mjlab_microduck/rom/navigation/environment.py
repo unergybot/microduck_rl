@@ -28,7 +28,7 @@ def add_geometry(model_path, scene):
     if world is None:
         raise ValueError("navigation model has no world")
 
-    def marker(parent, name, pos, size, rgba):
+    def marker(parent, name, pos, size, rgba, *, collides=False):
         ET.SubElement(
             parent,
             "geom",
@@ -36,8 +36,8 @@ def add_geometry(model_path, scene):
             type="box",
             pos=pos,
             size=size,
-            contype="0",
-            conaffinity="0",
+            contype="1" if collides else "0",
+            conaffinity="1" if collides else "0",
             rgba=rgba,
         )
 
@@ -59,6 +59,7 @@ def add_geometry(model_path, scene):
                 f"{center_x} {center_y} 0.32",
                 f"{half_x} {half_y} 0.018",
                 "0.7 0.4 0.15 0.85",
+                collides=v2,
             )
             for x_side, x in (
                 ("left", obstacle.minX + 0.018),
@@ -74,6 +75,7 @@ def add_geometry(model_path, scene):
                         f"{x} {y} 0.16",
                         "0.018 0.018 0.16",
                         "0.7 0.4 0.15 0.85",
+                        collides=v2,
                     )
         elif v2 and index in (1, 2):
             marker(
@@ -82,6 +84,7 @@ def add_geometry(model_path, scene):
                 f"{center_x} {center_y} 0.19",
                 f"{half_x} {half_y} 0.19",
                 "0.2 0.45 0.9 1",
+                collides=True,
             )
         else:
             marker(
@@ -99,6 +102,7 @@ def add_geometry(model_path, scene):
             f"{(left.minX + right.maxX) / 2} {(left.minY + left.maxY + right.minY + right.maxY) / 4} 0.39",
             f"{(right.maxX - left.minX) / 2} {max(left.maxY - left.minY, right.maxY - right.minY) / 2} 0.02",
             "0.2 0.45 0.9 1",
+            collides=True,
         )
     for index, (name, pose) in enumerate(sorted(scene.landmarks.items())):
         body = ET.SubElement(
