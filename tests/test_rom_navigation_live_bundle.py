@@ -251,6 +251,25 @@ def test_v2_ground_truth_camera_shows_apriltag_while_idle(live_v2):
     pytest.fail("ground-truth camera did not produce an idle frame")
 
 
+def test_camera_tag_setup_failure_does_not_prevent_control_runtime(
+    isolated_v2_settings, monkeypatch
+):
+    from mjlab_microduck.rom.main import load_verified_bundle
+    from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
+    from mjlab_microduck.rom.navigation import environment
+
+    def fail_camera_tags(*_args):
+        raise ValueError("camera-only tag setup failed")
+
+    monkeypatch.setenv("ROM_MICRODUCK_HEAD_CAMERA_ENABLED", "true")
+    monkeypatch.setattr(environment, "add_apriltag_probe", fail_camera_tags)
+    root = Path(isolated_v2_settings["MICRODUCK_ROM_BUNDLE_DIR"])
+    runtime = MicroduckMujocoRuntime(root, load_verified_bundle(root), realtime=False)
+    assert runtime._model is not None
+    assert runtime.viewer_model() is not None
+    assert runtime._head_camera is None
+
+
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])
 def test_real_child_navigation_stop_and_arrival(live, tmp_path, operation):
     request = submit(live, "home" if operation == "arrive" else "door")

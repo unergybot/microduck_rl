@@ -7,6 +7,7 @@ import hmac
 import json
 import math
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -252,7 +253,7 @@ class MicroduckMujocoRuntime:
             os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") == "true"
             and self._navigation_installation is not None
         )
-        if _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY" or camera_scene_enabled:
+        if _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY":
             from .navigation.environment import add_apriltag_probe
             from .navigation.vision import correct_head_camera_xml
 
@@ -331,12 +332,38 @@ class MicroduckMujocoRuntime:
             # Display assets must never make a valid control bundle unavailable.
             pass
         self._head_camera = None
-        if os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") == "true" and self._viewer is not None:
+        self._camera_snapshot = None
+        if (
+            os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") == "true"
+            and self._viewer is not None
+        ):
             try:
                 from .head_camera import HeadCameraObserver
 
-                self._head_camera = HeadCameraObserver(model_path, self._viewer.identity)
+                camera_model_path = model_path
+                if camera_scene_enabled and not (
+                    _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                ):
+                    from .navigation.environment import add_apriltag_probe
+                    from .navigation.vision import correct_head_camera_xml
+
+                    self._camera_snapshot = tempfile.TemporaryDirectory(
+                        prefix="microduck-camera-"
+                    )
+                    camera_root = Path(self._camera_snapshot.name)
+                    shutil.copytree(snapshot_root, camera_root, dirs_exist_ok=True)
+                    camera_model_path = camera_root / bundle.model.path
+                    add_apriltag_probe(
+                        camera_model_path, self._navigation_installation.scene
+                    )
+                    correct_head_camera_xml(camera_root)
+                self._head_camera = HeadCameraObserver(
+                    camera_model_path, self._viewer.identity
+                )
             except Exception:  # noqa: BLE001 - optional observer cannot prevent runtime load.
+                if self._camera_snapshot is not None:
+                    self._camera_snapshot.cleanup()
+                    self._camera_snapshot = None
                 self._head_camera = None
 
     def _publish_camera_pose_locked(self):
