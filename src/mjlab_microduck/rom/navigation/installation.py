@@ -61,6 +61,9 @@ def load(root, bundle_digest):
         runtimeSession="validation",
     )
     scene = Scene.model_validate(config["scene"])
+    from .calibrated_scene import validate_v2_scene
+
+    validate_v2_scene(scene)
     profile = NavigationProfile.model_validate(config["profile"])
     # Compatibility name on the private wire: this binds executable configuration,
     # never benchmark success. Updating an advisory report cannot invalidate a task.

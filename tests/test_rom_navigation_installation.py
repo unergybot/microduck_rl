@@ -1,10 +1,56 @@
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from mjlab_microduck.rom.navigation.installation import _NON_DEPLOYED_SOURCE, load
+
+
+def test_canonical_v2_scene_binds_the_desk_and_both_door_posts():
+    from mjlab_microduck.rom.navigation.calibrated_scene import canonical_v2_scene
+
+    scene = canonical_v2_scene()
+    assert scene.revision == "microduck-navigation-calibration-v2"
+    assert [obstacle.model_dump() for obstacle in scene.obstacles] == [
+        {"minX": 0.4, "maxX": 0.6, "minY": -0.1, "maxY": 0.3},
+        {"minX": -0.305, "maxX": -0.255, "minY": 0.975, "maxY": 1.025},
+        {"minX": 0.255, "maxX": 0.305, "minY": 0.975, "maxY": 1.025},
+    ]
+    assert {name: pose.model_dump() for name, pose in scene.landmarks.items()} == {
+        "home": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+        "desk": {"x": 1.0, "y": 0.0, "yaw": 0.0},
+        "door": {"x": 0.0, "y": 1.0, "yaw": 1.5707963267948966},
+    }
+
+
+@pytest.mark.parametrize("mutation", ["moved", "missing", "reordered"])
+def test_v2_installation_rejects_noncanonical_door_posts(tmp_path, mutation):
+    canonical = json.loads(
+        Path("src/mjlab_microduck/rom/navigation/calibrated_v2.json").read_text()
+    )
+    value = config(tmp_path)
+    value["scene"] = deepcopy(canonical["scene"])
+    posts = value["scene"]["obstacles"]
+    if mutation == "moved":
+        posts[1]["minX"] -= 0.01
+    elif mutation == "missing":
+        posts.pop()
+    else:
+        posts[1], posts[2] = posts[2], posts[1]
+    (tmp_path / "navigation.json").write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="noncanonical v2 scene"):
+        load(tmp_path, "sha256:" + "a" * 64)
+
+
+def test_v2_scene_files_are_in_the_simulator_image_context():
+    dockerfile = Path("docker/rom-simulator/Dockerfile").read_text()
+    for name in ("calibrated_scene.py", "calibrated_v2.json"):
+        source = "src/mjlab_microduck/rom/navigation/" + name
+        assert source in dockerfile
+        assert "!" + source in Path(".dockerignore").read_text()
+        assert "!" + source in Path("docker/rom-simulator/Dockerfile.dockerignore").read_text()
 
 
 def test_source_digest_covers_exactly_the_container_python_closure():
