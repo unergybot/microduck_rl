@@ -21,7 +21,9 @@ def angle(value):
 
 
 class Navigator:
-    def __init__(self, scene, profile, landmark_id, started):
+    def __init__(
+        self, scene, profile, landmark_id, started, *, direct_goal_radius_m=0.0
+    ):
         self.scene = scene
         self.profile = profile
         self.goal = scene.landmarks[landmark_id]
@@ -31,6 +33,9 @@ class Navigator:
         self.reason = None
         self.path = []
         self.index = 0
+        if not 0.0 <= direct_goal_radius_m <= 0.2:
+            raise ValueError("direct goal radius exceeds local planning bound")
+        self.direct_goal_radius_m = direct_goal_radius_m
 
     def update(self, pose, *, now, captured, speed, yaw_rate, _replanned=False):
         p = self.profile
@@ -66,6 +71,16 @@ class Navigator:
             self.settled_since = None
             return Command()
         self.settled_since = None
+        if (
+            distance < self.direct_goal_radius_m
+            and self.grid.segment_free(
+                (pose.x, pose.y), (self.goal.x, self.goal.y)
+            )
+        ):
+            # Near a visible goal, a penultimate grid-cell center can send a
+            # biped past the landmark and into a long turn/recovery orbit.
+            self.path = [(self.goal.x, self.goal.y)]
+            self.index = 0
         if not self.path or self.index >= len(self.path):
             cells = plan_cells(
                 self.grid.blocked,

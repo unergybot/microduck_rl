@@ -890,6 +890,11 @@ class MicroduckMujocoRuntime:
                     navigation.proposal.profile,
                     navigation.proposal.landmarkId,
                     self._clock(),
+                    direct_goal_radius_m=(
+                        0.2
+                        if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                        else 0.0
+                    ),
                 )
             with self._emergency_guard:
                 self._reject_emergency_publication_locked(start_generation)
