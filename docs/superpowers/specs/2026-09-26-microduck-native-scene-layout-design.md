@@ -36,8 +36,8 @@ Add `microduck-navigation-calibration-v2`. A versioned canonical Scene fixture
 is the source of truth for planar positions and collision footprints. It
 contains three ordered obstacles: the existing desk footprint
 `[0.4, 0.6] x [-0.1, 0.3]` m, then door posts with footprints
-`[-0.305, -0.255] x [0.975, 1.025]` m and
-`[0.255, 0.305] x [0.975, 1.025]` m. The v2 validator requires exact
+`[-0.325, -0.275] x [0.975, 1.025]` m and
+`[0.275, 0.325] x [0.975, 1.025]` m. The v2 validator requires exact
 canonical scene content and rejects a missing, moved, or reordered obstacle.
 The map grid consumes these same obstacle rectangles. MuJoCo tabletop/legs
 and door posts are generated from them, with a header spanning the posts above
@@ -47,9 +47,9 @@ of obstacle coordinates is allowed.
 The published v2 fixture keeps the existing `home`, `desk`, and `door`
 landmark IDs and their approved positions. The desk landmark remains an
 approach pose outside the desk footprint. The door landmark remains centered
-in the opening. The doorway has 0.51 m physical clear width; with the current
-0.15 m robot radius and 0.05 m clearance on each side, at least 0.11 m of map
-opening remains. Static room
+in the opening. The doorway has 0.55 m physical clear width. With the current
+0.15 m robot radius, 0.05 m clearance, and 0.05 m grid's half-cell diagonal
+inflation, its center grid cell remains free. Static room
 decoration may be added only when it neither introduces an unmapped collider
 nor occludes required visual tags from the qualified approach poses.
 

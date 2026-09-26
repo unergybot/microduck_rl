@@ -14,5 +14,5 @@ def canonical_v2_scene() -> Scene:
 
 
 def validate_v2_scene(scene: Scene) -> None:
-    if scene.revision == V2_REVISION and scene.model_dump() != canonical_v2_scene().model_dump():
+    if getattr(scene, "revision", None) == V2_REVISION and scene.model_dump() != canonical_v2_scene().model_dump():
         raise ValueError("noncanonical v2 scene")

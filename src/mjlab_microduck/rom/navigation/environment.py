@@ -3,8 +3,26 @@
 from math import cos, isclose, sin
 from xml.etree import ElementTree as ET
 
+from .calibrated_scene import V2_REVISION, validate_v2_scene
+
+
+def v2_collision_geom_names(scene) -> frozenset[str]:
+    if getattr(scene, "revision", None) != V2_REVISION:
+        return frozenset()
+    validate_v2_scene(scene)
+    return frozenset(
+        {f"rom_navigation_obstacle_{index}" for index in range(3)}
+        | {
+            f"rom_navigation_obstacle_0_leg_{x}_{y}"
+            for x in ("left", "right")
+            for y in ("front", "back")
+        }
+        | {"rom_navigation_obstacle_door_header"}
+    )
+
 
 def add_geometry(model_path, scene):
+    validate_v2_scene(scene)
     tree = ET.parse(model_path)
     world = tree.getroot().find("worldbody")
     if world is None:
@@ -23,8 +41,9 @@ def add_geometry(model_path, scene):
             rgba=rgba,
         )
 
-    calibrated = (
-        getattr(scene, "revision", None) == "microduck-navigation-calibration-v1"
+    v2 = getattr(scene, "revision", None) == V2_REVISION
+    calibrated = getattr(scene, "revision", None) in (
+        "microduck-navigation-calibration-v1", V2_REVISION
     )
     for index, obstacle in enumerate(scene.obstacles):
         center_x = (obstacle.minX + obstacle.maxX) / 2
@@ -56,6 +75,14 @@ def add_geometry(model_path, scene):
                         "0.018 0.018 0.16",
                         "0.7 0.4 0.15 0.85",
                     )
+        elif v2 and index in (1, 2):
+            marker(
+                world,
+                f"rom_navigation_obstacle_{index}",
+                f"{center_x} {center_y} 0.19",
+                f"{half_x} {half_y} 0.19",
+                "0.2 0.45 0.9 1",
+            )
         else:
             marker(
                 world,
@@ -64,6 +91,15 @@ def add_geometry(model_path, scene):
                 f"{half_x} {half_y} 0.15",
                 "0.4 0.4 0.4 0.65",
             )
+    if v2:
+        left, right = scene.obstacles[1:]
+        marker(
+            world,
+            "rom_navigation_obstacle_door_header",
+            f"{(left.minX + right.maxX) / 2} {(left.minY + left.maxY + right.minY + right.maxY) / 4} 0.39",
+            f"{(right.maxX - left.minX) / 2} {max(left.maxY - left.minY, right.maxY - right.minY) / 2} 0.02",
+            "0.2 0.45 0.9 1",
+        )
     for index, (name, pose) in enumerate(sorted(scene.landmarks.items())):
         body = ET.SubElement(
             world,
@@ -72,7 +108,7 @@ def add_geometry(model_path, scene):
             pos=f"{pose.x} {pose.y} 0",
             quat=f"{cos(pose.yaw / 2)} 0 0 {sin(pose.yaw / 2)}",
         )
-        if name == "door":
+        if name == "door" and not v2:
             for side, lateral in (("left", -0.28), ("right", 0.28)):
                 marker(
                     body,
