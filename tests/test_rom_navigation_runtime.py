@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
+
 import pytest
+
+from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
 from mjlab_microduck.rom.navigation_contracts import NavigationTaskRequest, digest
 from mjlab_microduck.rom.navigation_service import NavigationRuntimeRequest
-from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
 from tests.test_rom_mujoco_runtime import _write_verified_bundle
 
 

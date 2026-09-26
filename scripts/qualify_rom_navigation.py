@@ -43,7 +43,11 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         realtime=False,
         monotonic_clock=lambda: clock[0],
         _navigation_candidate=installed,
-        _apriltag_experiment=pose_source == "SIM_VISUAL_ODOMETRY",
+        navigation_pose_source=(
+            "SIM_VISUAL_ODOMETRY"
+            if pose_source == "SIM_VISUAL_ODOMETRY"
+            else "SIM_GROUND_TRUTH"
+        ),
     )
     with runtime._lock:
         runtime._reset_model_locked(np.random.default_rng(seed))
@@ -57,10 +61,9 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
             math.sin(yaw / 2),
         ]
         mujoco.mj_forward(runtime._model, runtime._data)
-    if pose_source != "SIM_GROUND_TRUTH":
+    if pose_source == "SIM_SENSOR_ODOMETRY":
         runtime.set_navigation_estimator_for_qualification(
             Pose(x=x, y=y, yaw=yaw),
-            visual=pose_source == "SIM_VISUAL_ODOMETRY",
         )
     proposal = {
         "schema": "ROM_MICRODUCK_NAVIGATION_PROPOSAL_V2",
@@ -104,6 +107,11 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
         leaseMs=profile.leaseMs,
         requestedBy="qualification",
         navigation=nav,
+        poseSource=(
+            "SIM_VISUAL_ODOMETRY"
+            if pose_source == "SIM_VISUAL_ODOMETRY"
+            else "SIM_GROUND_TRUTH"
+        ),
     )
     action = next(a for a in bundle.actions if a.actionCode == "WALK_VELOCITY")
     handle = runtime.start(action, request)
@@ -113,7 +121,10 @@ def run(root, bundle, scene, profile, scenario, seed, pose_source="SIM_GROUND_TR
     for _ in range(profile.deadlineMs // 20 + 2):
         clock[0] += 0.02
         sample = runtime.sample(handle)
-        if pose_source != "SIM_GROUND_TRUTH":
+        if pose_source != "SIM_GROUND_TRUTH" and (
+            pose_source != "SIM_VISUAL_ODOMETRY"
+            or runtime._navigation_estimator.localized
+        ):
             estimated = runtime._navigation_estimator.pose
             actual = runtime._base_position()
             max_position_error = max(
