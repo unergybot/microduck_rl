@@ -197,6 +197,79 @@ def test_v2_visual_real_child_reaches_desk_after_door(live_v2_visual):
         assert result["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
 
 
+def test_v2_visual_camera_stream_during_door_and_desk(live_v2_visual):
+    if os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") != "true":
+        pytest.skip("requires explicitly enabled EGL camera observer")
+    for landmark in ("door", "desk"):
+        request = submit(live_v2_visual, landmark)
+        deadline = time.monotonic() + 120
+        sequence = 1
+        seen = set()
+        while time.monotonic() < deadline:
+            state = live_v2_visual.get(f"/v2/navigation/tasks/{request['taskId']}").json()
+            if state["state"] not in {"RUNNING", "PENDING", "CANCELLING"}:
+                break
+            camera = live_v2_visual.get("/v1/viewer/camera")
+            if camera.status_code == 200:
+                assert camera.headers["x-active-task-id"] == request["taskId"]
+                assert camera.headers["content-type"] == "image/jpeg"
+                seen.add(camera.headers["x-frame-sequence"])
+            renewal = live_v2_visual.put(
+                f"/v2/navigation/tasks/{request['taskId']}/lease",
+                json={"taskId": request["taskId"], "proposalDigest": request["proposalDigest"], "sequence": sequence},
+            )
+            if renewal.status_code == 200:
+                sequence += 1
+            time.sleep(.3)
+        else:
+            pytest.fail(f"{landmark} did not terminate")
+        assert state["state"] == "SUCCEEDED", state
+        assert state["evidence"]["metrics"]["stoppedCommandConfirmed"] is True
+        assert len(seen) >= 2, (landmark, seen)
+
+
+def test_v2_ground_truth_camera_shows_apriltag_while_idle(live_v2):
+    if os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") != "true":
+        pytest.skip("requires explicitly enabled EGL camera observer")
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from mjlab_microduck.rom.navigation.apriltag import detect_tag_corners
+
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        camera = live_v2.get("/v1/viewer/camera")
+        if camera.status_code == 200:
+            with Image.open(io.BytesIO(camera.content)) as image:
+                detected = detect_tag_corners(np.asarray(image.convert("RGB")))
+            assert detected, "ground-truth camera did not include calibrated tags"
+            assert camera.headers["x-active-task-id"] == ""
+            return
+        time.sleep(.2)
+    pytest.fail("ground-truth camera did not produce an idle frame")
+
+
+def test_camera_tag_setup_failure_does_not_prevent_control_runtime(
+    isolated_v2_settings, monkeypatch
+):
+    from mjlab_microduck.rom.main import load_verified_bundle
+    from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
+    from mjlab_microduck.rom.navigation import environment
+
+    def fail_camera_tags(*_args):
+        raise ValueError("camera-only tag setup failed")
+
+    monkeypatch.setenv("ROM_MICRODUCK_HEAD_CAMERA_ENABLED", "true")
+    monkeypatch.setattr(environment, "add_apriltag_probe", fail_camera_tags)
+    root = Path(isolated_v2_settings["MICRODUCK_ROM_BUNDLE_DIR"])
+    runtime = MicroduckMujocoRuntime(root, load_verified_bundle(root), realtime=False)
+    assert runtime._model is not None
+    assert runtime.viewer_model() is not None
+    assert runtime._head_camera is None
+
+
 @pytest.mark.parametrize("operation", ["cancel", "expire", "arrive", "moving_arrive"])
 def test_real_child_navigation_stop_and_arrival(live, tmp_path, operation):
     request = submit(live, "home" if operation == "arrive" else "door")

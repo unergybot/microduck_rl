@@ -521,12 +521,11 @@ def test_generated_openapi_has_exact_v1_operations_security_and_schema_identifie
                 )
             for status, response in expected["responses"].items():
                 if "$ref" not in response:
-                    assert (
-                        actual["responses"][status]["content"]["application/json"][
-                            "schema"
-                        ]
-                        == response["content"]["application/json"]["schema"]
-                    )
+                    expected_content = response.get("content", {})
+                    actual_content = actual["responses"][status].get("content", {})
+                    assert set(actual_content) == set(expected_content)
+                    for media_type, media in expected_content.items():
+                        assert actual_content[media_type]["schema"] == media["schema"]
                 else:
                     expected_schema = checked_in["components"]["responses"][
                         response["$ref"].removeprefix("#/components/responses/")

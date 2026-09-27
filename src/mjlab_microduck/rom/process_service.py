@@ -312,6 +312,9 @@ class SimulatorTaskService:
     def viewer_frame(self):
         return self._supervisor.viewer_frame()
 
+    def viewer_camera(self):
+        return self._supervisor.viewer_camera()
+
     def observe_navigation(self):
         return self._supervisor.observe()
 

@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import json
 import math
+import os
+import shutil
 import tempfile
 import threading
 import time
@@ -247,6 +249,10 @@ class MicroduckMujocoRuntime:
             from .navigation.environment import add_geometry
 
             add_geometry(model_path, self._navigation_installation.scene)
+        camera_scene_enabled = (
+            os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") == "true"
+            and self._navigation_installation is not None
+        )
         if _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY":
             from .navigation.environment import add_apriltag_probe
             from .navigation.vision import correct_head_camera_xml
@@ -325,6 +331,65 @@ class MicroduckMujocoRuntime:
         except Exception:
             # Display assets must never make a valid control bundle unavailable.
             pass
+        self._head_camera = None
+        self._camera_snapshot = None
+        if (
+            os.environ.get("ROM_MICRODUCK_HEAD_CAMERA_ENABLED") == "true"
+            and self._viewer is not None
+        ):
+            try:
+                from .head_camera import HeadCameraObserver
+
+                camera_model_path = model_path
+                if camera_scene_enabled and not (
+                    _apriltag_experiment or navigation_pose_source == "SIM_VISUAL_ODOMETRY"
+                ):
+                    from .navigation.environment import add_apriltag_probe
+                    from .navigation.vision import correct_head_camera_xml
+
+                    self._camera_snapshot = tempfile.TemporaryDirectory(
+                        prefix="microduck-camera-"
+                    )
+                    camera_root = Path(self._camera_snapshot.name)
+                    shutil.copytree(snapshot_root, camera_root, dirs_exist_ok=True)
+                    camera_model_path = camera_root / bundle.model.path
+                    add_apriltag_probe(
+                        camera_model_path, self._navigation_installation.scene
+                    )
+                    correct_head_camera_xml(camera_root)
+                self._head_camera = HeadCameraObserver(
+                    camera_model_path, self._viewer.identity
+                )
+            except Exception:  # noqa: BLE001 - optional observer cannot prevent runtime load.
+                if self._camera_snapshot is not None:
+                    self._camera_snapshot.cleanup()
+                    self._camera_snapshot = None
+                self._head_camera = None
+
+    def _publish_camera_pose_locked(self):
+        if self._head_camera is None:
+            return
+        from .head_camera import CameraPoseSnapshot
+
+        task_id = self._active_handle.taskId if self._active_handle is not None else None
+        self._head_camera.submit(CameraPoseSnapshot(
+            self._data.qpos, self._data.mocap_pos, self._data.mocap_quat, task_id
+        ))
+
+    def viewer_camera(self):
+        if self._head_camera is None:
+            raise ValueError("camera unavailable")
+        self._head_camera.activate()
+        if self._lock.acquire(timeout=.01):
+            try:
+                self._publish_camera_pose_locked()
+            finally:
+                self._lock.release()
+        frame = self._head_camera.latest()
+        active_task_id = self._active_handle.taskId if self._active_handle is not None else None
+        if frame is None or frame.metadata.get("activeTaskId") != active_task_id:
+            raise ValueError("camera frame unavailable")
+        return frame
 
     def viewer_model(self):
         if self._viewer is None:
@@ -1249,8 +1314,8 @@ class MicroduckMujocoRuntime:
                     )
                 self._require_finite_simulation_state()
                 if self._navigator is not None:
-                    from .navigation_contracts import Pose
                     from .navigation.sensor_odometry import SensorFailure
+                    from .navigation_contracts import Pose
 
                     now = self._clock()
                     if (
@@ -1388,6 +1453,7 @@ class MicroduckMujocoRuntime:
                         return
                     mujoco.mj_step(self._model, self._data)
                 self._step_count += 1
+                self._publish_camera_pose_locked()
                 self._update_safety_metrics_locked(policy_action)
                 if self._active_action.actionCode in _CONTINUOUS_ACTIONS:
                     tracking_error = self._velocity_tracking_error_locked()

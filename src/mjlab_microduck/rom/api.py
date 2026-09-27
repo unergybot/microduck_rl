@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Depends, FastAPI, Path, Query, Request, Security
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPBearer
 from pydantic import Field, StringConstraints
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -276,6 +276,7 @@ def _error_response(status_code: int, code: ErrorCode, message: str) -> JSONResp
     return JSONResponse(
         status_code=status_code,
         content=Error(code=code, message=message, details={}).model_dump(),
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -528,6 +529,39 @@ def create_app(service: SimulatorTaskService | None, bearer_token: str) -> FastA
     )
     def viewer_frame():
         return viewer_read("viewer_frame")
+
+    @app.get(
+        "/v1/viewer/camera", operation_id="viewerCamera",
+        dependencies=[Depends(require_bearer)],
+        response_class=Response,
+        responses={200: {"content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}}},
+                   401: {"model": Error}, 503: {"model": Error}},
+    )
+    def viewer_camera():
+        try:
+            if service is None:
+                raise ValueError("camera unavailable")
+            from .head_camera import decode_camera, encode_camera
+
+            frame = decode_camera(encode_camera(service.viewer_camera()))
+            meta = frame.metadata
+            return Response(
+                frame.image,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Runtime-Session": str(meta["runtimeSession"]),
+                    "X-Model-Digest": str(meta["modelDigest"]),
+                    "X-Bundle-Digest": str(meta["bundleDigest"]),
+                    "X-Captured-At": str(meta["capturedAt"]),
+                    "X-Frame-Sequence": str(meta["sequence"]),
+                    "X-Active-Task-Id": str(meta["activeTaskId"] or ""),
+                    "X-Frame-Width": str(meta["width"]),
+                    "X-Frame-Height": str(meta["height"]),
+                },
+            )
+        except Exception:  # noqa: BLE001 - camera observation is best effort.
+            raise NotReady("camera is unavailable") from None
 
     def viewer_read(method):
         try:

@@ -272,6 +272,7 @@ class RuntimeProcessSupervisor:
             "MUJOCO_GL",
             "OMP_NUM_THREADS",
             "PATH",
+            "ROM_MICRODUCK_HEAD_CAMERA_ENABLED",
         }
         argv = (
                 "/usr/bin/setpriv",
@@ -355,8 +356,13 @@ class RuntimeProcessSupervisor:
     def viewer_frame(self):
         return self._viewer_read("frame")
 
+    def viewer_camera(self):
+        from .head_camera import decode_camera
+
+        return decode_camera(self._viewer_read("camera"))
+
     def _viewer_read(self, resource):
-        from .viewer import MODEL_MAX_BYTES, FRAME_MAX_BYTES
+        from .viewer import FRAME_MAX_BYTES, MODEL_MAX_BYTES
 
         if not self._viewer_lock.acquire(blocking=False):
             raise SupervisorUnavailable("viewer busy")
@@ -374,7 +380,7 @@ class RuntimeProcessSupervisor:
                 return cached[2]
             offset, token, pieces, total = 0, None, [], None
             deadline = time.monotonic() + (4.5 if resource == "model" else 0.5)
-            limit = MODEL_MAX_BYTES if resource == "model" else FRAME_MAX_BYTES
+            limit = MODEL_MAX_BYTES if resource == "model" else 400000 if resource == "camera" else FRAME_MAX_BYTES
             while True:
                 if (
                     time.monotonic() >= deadline
