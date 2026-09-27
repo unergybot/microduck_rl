@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -551,6 +552,35 @@ def test_restart_fence_survives_simulator_process_replacement(tmp_path, monkeypa
         replacement.close()
 
 
+def test_expired_restart_permit_still_blocks_admission_after_process_replacement(tmp_path, monkeypatch):
+    service, _, supervisor, _ = _process_service(tmp_path, "normal")
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    status = service.robot_status().model_copy(
+        update={"requestedMotion": zero, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(supervisor, "observe", lambda: status)
+    try:
+        fence = service.acquire_restart_fence(ttl_s=120)
+    finally:
+        service.close()
+    store = SqliteTaskStore(tmp_path / "normal.sqlite3")
+    store.persist_restart_fence(
+        fence.fenceId, (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+    )
+    replacement, request, _, _ = _process_service(tmp_path, "normal")
+    try:
+        with pytest.raises(Exception) as expired:
+            replacement.restart_fence(fence.fenceId)
+        assert getattr(expired.value, "code", None) == "PRECONDITION_FAILED"
+        with pytest.raises(Exception) as refused:
+            replacement.create_task(request)
+        assert getattr(refused.value, "code", None) == "ROBOT_BUSY"
+        replacement.release_restart_fence(fence.fenceId)
+        assert replacement.create_task(request).state in {"VALIDATING", "RUNNING"}
+    finally:
+        replacement.close()
+
+
 @pytest.mark.parametrize("motion", [None, {"twist": [0.1, 0.0, 0.0], "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}])
 def test_restart_fence_refuses_unknown_or_nonzero_motion(tmp_path, monkeypatch, motion):
     """Missing or moving status cannot authorize a container restart."""
@@ -569,7 +599,7 @@ def test_restart_fence_refuses_unknown_or_nonzero_motion(tmp_path, monkeypatch, 
 
 
 def test_restart_fence_expires_and_rejects_old_identity(tmp_path, monkeypatch):
-    """An expired permit cannot authorize a later restart."""
+    """An expired permit cannot authorize restart or reopen task admission."""
     clock = [100.0]
     service, request, supervisor, _ = _process_service(
         tmp_path, "normal", monotonic_clock=lambda: clock[0]
@@ -585,6 +615,10 @@ def test_restart_fence_expires_and_rejects_old_identity(tmp_path, monkeypatch):
         with pytest.raises(Exception) as expired:
             service.restart_fence(fence.fenceId)
         assert getattr(expired.value, "code", None) == "PRECONDITION_FAILED"
+        with pytest.raises(Exception) as refused:
+            service.create_task(request)
+        assert getattr(refused.value, "code", None) == "ROBOT_BUSY"
+        service.release_restart_fence(fence.fenceId)
         assert service.create_task(request).state in {"VALIDATING", "RUNNING"}
     finally:
         service.close()

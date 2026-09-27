@@ -196,22 +196,19 @@ class SimulatorTaskService:
         self._store.mark_interrupted_unknown()
         self._lock, self._active, self._next_generation = Lock(), None, 1
         self._restart_fence: tuple[RestartFence, float] | None = None
+        self._maintenance_fence_id: str | None = None
         self._released_restart_fence_id: str | None = None
         persisted_fence = self._store.load_restart_fence()
         if persisted_fence is not None:
             fence_id, expiry_text = persisted_fence
+            self._maintenance_fence_id = fence_id
             expiry = datetime.fromisoformat(expiry_text)
             remaining = (expiry - datetime.now(UTC)).total_seconds()
             if remaining > 0:
-                # A new process is the expected result of Docker restart. Preserve
-                # admission until Boot checks navigation and explicitly releases it.
-                expiry = max(expiry, datetime.now(UTC) + timedelta(seconds=240))
-                self._store.persist_restart_fence(fence_id, expiry.isoformat())
                 recovered = RestartFence(fenceId=fence_id, expiresAt=expiry)
-                remaining = (expiry - datetime.now(UTC)).total_seconds()
                 self._restart_fence = (recovered, self._monotonic_clock() + remaining)
-            else:
-                self._store.clear_restart_fence(fence_id)
+            # Permit expiry revokes restart authorization, but maintenance
+            # admission stays closed until Boot explicitly releases the fence.
         self._watchdog_healthy, self._readiness_failure_reason = True, None
         # Compatibility argument now bounds duplicate callers waiting for the
         # one supervisor-owned COMMAND acknowledgement.
@@ -228,7 +225,6 @@ class SimulatorTaskService:
         if held is None:
             return None
         if self._monotonic_clock() >= held[1]:
-            self._store.clear_restart_fence(held[0].fenceId)
             self._restart_fence = None
             return None
         return held[0]
@@ -238,7 +234,7 @@ class SimulatorTaskService:
             raise InvalidParameters("restart fence TTL must be 120 seconds")
         self._reconcile_reaped_terminal()
         with self._lock:
-            if self._active_restart_fence() is not None or self._active is not None:
+            if self._maintenance_fence_id is not None or self._active is not None:
                 raise RobotBusy("simulator is busy")
             try:
                 status = self._supervisor.observe()
@@ -254,6 +250,7 @@ class SimulatorTaskService:
             )
             self._store.persist_restart_fence(fence.fenceId, fence.expiresAt.isoformat())
             self._restart_fence = (fence, self._monotonic_clock() + ttl_s)
+            self._maintenance_fence_id = fence.fenceId
             return fence
 
     def restart_fence(self, fence_id: str) -> RestartFence:
@@ -265,10 +262,10 @@ class SimulatorTaskService:
 
     def release_restart_fence(self, fence_id: str) -> None:
         with self._lock:
-            fence = self._active_restart_fence()
-            if fence is not None and secrets.compare_digest(fence.fenceId, fence_id):
+            if self._maintenance_fence_id is not None and secrets.compare_digest(self._maintenance_fence_id, fence_id):
                 self._store.clear_restart_fence(fence_id)
                 self._restart_fence = None
+                self._maintenance_fence_id = None
                 self._released_restart_fence_id = fence_id
                 return
             if self._released_restart_fence_id == fence_id:
@@ -282,7 +279,7 @@ class SimulatorTaskService:
         if existing is not None:
             return self._create_idempotent(request, request_hash)
         with self._lock:
-            if self._active_restart_fence() is not None:
+            if self._maintenance_fence_id is not None:
                 raise RobotBusy("simulator maintenance is in progress")
             if self._active is not None:
                 raise RobotBusy("robot already has an active task")
@@ -290,7 +287,7 @@ class SimulatorTaskService:
         action = self._validate_request(request)
         self._require_preconditions(action, request)
         with self._lock:
-            if self._active_restart_fence() is not None:
+            if self._maintenance_fence_id is not None:
                 raise RobotBusy("simulator maintenance is in progress")
             if self._store.get(request.taskId) is not None:
                 return self._create_idempotent(request, request_hash)
