@@ -768,6 +768,13 @@ class TaskSnapshot(ContractModel):
     stopReason: BoundedIdentifier | None = None
 
 
+class RestartFence(ContractModel):
+    fenceId: str
+    expiresAt: datetime
+    activeTask: Literal[False] = False
+    motionStopped: Literal[True] = True
+
+
 class RobotStatus(ContractModel):
     schema_: Literal["BIPED_POSE_V1"] = Field(
         ..., alias="schema", serialization_alias="schema"

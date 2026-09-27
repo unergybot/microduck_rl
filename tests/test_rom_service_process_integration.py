@@ -507,6 +507,78 @@ def _process_service(
     return service, request, holder["supervisor"], holder["launch"]
 
 
+def test_restart_fence_blocks_new_task_until_release(tmp_path, monkeypatch):
+    """A restart permit must close the native task-admission race."""
+    service, request, supervisor, _ = _process_service(tmp_path, "normal")
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    observed = service.robot_status().model_copy(
+        update={"requestedMotion": zero, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(supervisor, "observe", lambda: observed)
+    try:
+        fence = service.acquire_restart_fence(ttl_s=120)
+        assert fence.activeTask is False
+        assert fence.motionStopped is True
+        with pytest.raises(Exception) as refused:
+            service.create_task(request)
+        assert getattr(refused.value, "code", None) == "ROBOT_BUSY"
+        service.release_restart_fence(fence.fenceId)
+        assert service.create_task(request).state in {"VALIDATING", "RUNNING"}
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("motion", [None, {"twist": [0.1, 0.0, 0.0], "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}])
+def test_restart_fence_refuses_unknown_or_nonzero_motion(tmp_path, monkeypatch, motion):
+    """Missing or moving status cannot authorize a container restart."""
+    service, _, supervisor, _ = _process_service(tmp_path, "normal")
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    status = service.robot_status().model_copy(
+        update={"requestedMotion": motion or {}, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(supervisor, "observe", lambda: status)
+    try:
+        with pytest.raises(Exception) as refused:
+            service.acquire_restart_fence(ttl_s=120)
+        assert getattr(refused.value, "code", None) == "PRECONDITION_FAILED"
+    finally:
+        service.close()
+
+
+def test_restart_fence_expires_and_rejects_old_identity(tmp_path, monkeypatch):
+    """An expired permit cannot authorize a later restart."""
+    clock = [100.0]
+    service, request, supervisor, _ = _process_service(
+        tmp_path, "normal", monotonic_clock=lambda: clock[0]
+    )
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    status = service.robot_status().model_copy(
+        update={"requestedMotion": zero, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(supervisor, "observe", lambda: status)
+    try:
+        fence = service.acquire_restart_fence(ttl_s=120)
+        clock[0] = 221.0
+        with pytest.raises(Exception) as expired:
+            service.restart_fence(fence.fenceId)
+        assert getattr(expired.value, "code", None) == "PRECONDITION_FAILED"
+        assert service.create_task(request).state in {"VALIDATING", "RUNNING"}
+    finally:
+        service.close()
+
+
+def test_restart_fence_refuses_active_native_task(tmp_path):
+    """An ongoing simulator task cannot be interrupted by restart admission."""
+    service, request, _, _ = _process_service(tmp_path, "normal")
+    try:
+        service.create_task(request)
+        with pytest.raises(Exception) as refused:
+            service.acquire_restart_fence(ttl_s=120)
+        assert getattr(refused.value, "code", None) == "ROBOT_BUSY"
+    finally:
+        service.close()
+
+
 def _emit_terminal(launch):
     peer = launch.test_peer
     assert peer is not None
