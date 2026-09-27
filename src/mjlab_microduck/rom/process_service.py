@@ -197,6 +197,21 @@ class SimulatorTaskService:
         self._lock, self._active, self._next_generation = Lock(), None, 1
         self._restart_fence: tuple[RestartFence, float] | None = None
         self._released_restart_fence_id: str | None = None
+        persisted_fence = self._store.load_restart_fence()
+        if persisted_fence is not None:
+            fence_id, expiry_text = persisted_fence
+            expiry = datetime.fromisoformat(expiry_text)
+            remaining = (expiry - datetime.now(UTC)).total_seconds()
+            if remaining > 0:
+                # A new process is the expected result of Docker restart. Preserve
+                # admission until Boot checks navigation and explicitly releases it.
+                expiry = max(expiry, datetime.now(UTC) + timedelta(seconds=240))
+                self._store.persist_restart_fence(fence_id, expiry.isoformat())
+                recovered = RestartFence(fenceId=fence_id, expiresAt=expiry)
+                remaining = (expiry - datetime.now(UTC)).total_seconds()
+                self._restart_fence = (recovered, self._monotonic_clock() + remaining)
+            else:
+                self._store.clear_restart_fence(fence_id)
         self._watchdog_healthy, self._readiness_failure_reason = True, None
         # Compatibility argument now bounds duplicate callers waiting for the
         # one supervisor-owned COMMAND acknowledgement.
@@ -213,6 +228,7 @@ class SimulatorTaskService:
         if held is None:
             return None
         if self._monotonic_clock() >= held[1]:
+            self._store.clear_restart_fence(held[0].fenceId)
             self._restart_fence = None
             return None
         return held[0]
@@ -236,6 +252,7 @@ class SimulatorTaskService:
                 fenceId=secrets.token_urlsafe(24),
                 expiresAt=datetime.now(UTC) + timedelta(seconds=ttl_s),
             )
+            self._store.persist_restart_fence(fence.fenceId, fence.expiresAt.isoformat())
             self._restart_fence = (fence, self._monotonic_clock() + ttl_s)
             return fence
 
@@ -250,6 +267,7 @@ class SimulatorTaskService:
         with self._lock:
             fence = self._active_restart_fence()
             if fence is not None and secrets.compare_digest(fence.fenceId, fence_id):
+                self._store.clear_restart_fence(fence_id)
                 self._restart_fence = None
                 self._released_restart_fence_id = fence_id
                 return

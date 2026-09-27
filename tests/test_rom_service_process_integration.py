@@ -528,6 +528,29 @@ def test_restart_fence_blocks_new_task_until_release(tmp_path, monkeypatch):
         service.close()
 
 
+def test_restart_fence_survives_simulator_process_replacement(tmp_path, monkeypatch):
+    service, _, supervisor, _ = _process_service(tmp_path, "normal")
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    status = service.robot_status().model_copy(
+        update={"requestedMotion": zero, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(supervisor, "observe", lambda: status)
+    try:
+        fence = service.acquire_restart_fence(ttl_s=120)
+    finally:
+        service.close()
+    replacement, request, _, _ = _process_service(tmp_path, "normal")
+    try:
+        assert replacement.restart_fence(fence.fenceId).fenceId == fence.fenceId
+        with pytest.raises(Exception) as refused:
+            replacement.create_task(request)
+        assert getattr(refused.value, "code", None) == "ROBOT_BUSY"
+        replacement.release_restart_fence(fence.fenceId)
+        assert replacement.create_task(request).state in {"VALIDATING", "RUNNING"}
+    finally:
+        replacement.close()
+
+
 @pytest.mark.parametrize("motion", [None, {"twist": [0.1, 0.0, 0.0], "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}])
 def test_restart_fence_refuses_unknown_or_nonzero_motion(tmp_path, monkeypatch, motion):
     """Missing or moving status cannot authorize a container restart."""
