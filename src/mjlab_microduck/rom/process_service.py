@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import math
+import secrets
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from threading import Event, Lock
 from typing import Any, Protocol
 
@@ -18,6 +20,7 @@ from .action_catalog import (
 from .contracts import (
     ActionDefinition,
     PolicyBundle,
+    RestartFence,
     RobotStatus,
     TaskCommandRequest,
     TaskCreateRequest,
@@ -41,6 +44,23 @@ from .store import StaleCommand as StoreStaleCommand
 
 class SimulatorServiceError(ValueError):
     code = "INTERNAL_ERROR"
+
+
+def _motion_is_zero(value: Mapping[str, Any]) -> bool:
+    lengths = {"twist": 3, "headPose": 4, "bodyPose": 6}
+    if not isinstance(value, Mapping) or set(value) != set(lengths):
+        return False
+    return all(
+        isinstance(value[key], (list, tuple))
+        and len(value[key]) == length
+        and all(
+            type(component) in (int, float)
+            and math.isfinite(component)
+            and abs(component) <= 1e-9
+            for component in value[key]
+        )
+        for key, length in lengths.items()
+    )
 
 
 class BundleMismatch(SimulatorServiceError):
@@ -175,6 +195,20 @@ class SimulatorTaskService:
         )
         self._store.mark_interrupted_unknown()
         self._lock, self._active, self._next_generation = Lock(), None, 1
+        self._restart_fence: tuple[RestartFence, float] | None = None
+        self._maintenance_fence_id: str | None = None
+        self._released_restart_fence_id: str | None = None
+        persisted_fence = self._store.load_restart_fence()
+        if persisted_fence is not None:
+            fence_id, expiry_text = persisted_fence
+            self._maintenance_fence_id = fence_id
+            expiry = datetime.fromisoformat(expiry_text)
+            remaining = (expiry - datetime.now(UTC)).total_seconds()
+            if remaining > 0:
+                recovered = RestartFence(fenceId=fence_id, expiresAt=expiry)
+                self._restart_fence = (recovered, self._monotonic_clock() + remaining)
+            # Permit expiry revokes restart authorization, but maintenance
+            # admission stays closed until Boot explicitly releases the fence.
         self._watchdog_healthy, self._readiness_failure_reason = True, None
         # Compatibility argument now bounds duplicate callers waiting for the
         # one supervisor-owned COMMAND acknowledgement.
@@ -186,6 +220,58 @@ class SimulatorTaskService:
         except Exception:  # noqa: BLE001 - startup diagnostics fail closed.
             self._readiness_failure_reason = "RUNTIME_UNAVAILABLE"
 
+    def _active_restart_fence(self) -> RestartFence | None:
+        held = self._restart_fence
+        if held is None:
+            return None
+        if self._monotonic_clock() >= held[1]:
+            self._restart_fence = None
+            return None
+        return held[0]
+
+    def acquire_restart_fence(self, ttl_s: int) -> RestartFence:
+        if type(ttl_s) is not int or ttl_s != 120:
+            raise InvalidParameters("restart fence TTL must be 120 seconds")
+        self._reconcile_reaped_terminal()
+        with self._lock:
+            if self._maintenance_fence_id is not None or self._active is not None:
+                raise RobotBusy("simulator is busy")
+            try:
+                status = self._supervisor.observe()
+            except Exception as exc:
+                raise NotReady("simulator status cannot be verified") from exc
+            if status.activeTaskId is not None:
+                raise RobotBusy("simulator has an active task")
+            if not _motion_is_zero(status.requestedMotion) or not _motion_is_zero(status.appliedMotion):
+                raise PreconditionFailed("simulator motion is not stopped")
+            fence = RestartFence(
+                fenceId=secrets.token_urlsafe(24),
+                expiresAt=datetime.now(UTC) + timedelta(seconds=ttl_s),
+            )
+            self._store.persist_restart_fence(fence.fenceId, fence.expiresAt.isoformat())
+            self._restart_fence = (fence, self._monotonic_clock() + ttl_s)
+            self._maintenance_fence_id = fence.fenceId
+            return fence
+
+    def restart_fence(self, fence_id: str) -> RestartFence:
+        with self._lock:
+            fence = self._active_restart_fence()
+            if fence is None or not secrets.compare_digest(fence.fenceId, fence_id):
+                raise PreconditionFailed("restart fence is not active")
+            return fence
+
+    def release_restart_fence(self, fence_id: str) -> None:
+        with self._lock:
+            if self._maintenance_fence_id is not None and secrets.compare_digest(self._maintenance_fence_id, fence_id):
+                self._store.clear_restart_fence(fence_id)
+                self._restart_fence = None
+                self._maintenance_fence_id = None
+                self._released_restart_fence_id = fence_id
+                return
+            if self._released_restart_fence_id == fence_id:
+                return
+            raise PreconditionFailed("restart fence is not active")
+
     def create_task(self, request: TaskCreateRequest):
         self._reconcile_reaped_terminal()
         request_hash = sha256_prefixed(request)
@@ -193,12 +279,16 @@ class SimulatorTaskService:
         if existing is not None:
             return self._create_idempotent(request, request_hash)
         with self._lock:
+            if self._maintenance_fence_id is not None:
+                raise RobotBusy("simulator maintenance is in progress")
             if self._active is not None:
                 raise RobotBusy("robot already has an active task")
         self._require_motion_ready()
         action = self._validate_request(request)
         self._require_preconditions(action, request)
         with self._lock:
+            if self._maintenance_fence_id is not None:
+                raise RobotBusy("simulator maintenance is in progress")
             if self._store.get(request.taskId) is not None:
                 return self._create_idempotent(request, request_hash)
             if self._active is not None:

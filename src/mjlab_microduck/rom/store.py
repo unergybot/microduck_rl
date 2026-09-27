@@ -52,6 +52,31 @@ class SqliteTaskStore:
         self._database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_schema()
 
+    def load_restart_fence(self) -> tuple[str, str] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT fence_id, expires_at FROM restart_fence WHERE singleton_id = 1"
+            ).fetchone()
+        return (row["fence_id"], row["expires_at"]) if row is not None else None
+
+    def persist_restart_fence(self, fence_id: str, expires_at: str) -> None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "INSERT INTO restart_fence(singleton_id, fence_id, expires_at) "
+                "VALUES (1, ?, ?) ON CONFLICT(singleton_id) DO UPDATE SET "
+                "fence_id=excluded.fence_id, expires_at=excluded.expires_at",
+                (fence_id, expires_at),
+            )
+            connection.commit()
+
+    def clear_restart_fence(self, fence_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM restart_fence WHERE singleton_id = 1 AND fence_id = ?",
+                (fence_id,),
+            )
+
     def create(
         self, request: TaskCreateRequest, request_hash: str
     ) -> tuple[TaskSnapshot, bool]:
@@ -353,6 +378,12 @@ class SqliteTaskStore:
                     evidence_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (task_id) REFERENCES task(task_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS restart_fence (
+                    singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+                    fence_id TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
                 );
                 """
             )

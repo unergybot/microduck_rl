@@ -194,6 +194,31 @@ def test_health_is_public(client: TestClient):
     assert response.json() == {"alive": True}
 
 
+def test_restart_fence_api_requires_bearer_and_returns_verifiable_permit(
+    client: TestClient, service: SimulatorTaskService, auth: dict[str, str], monkeypatch
+):
+    """The maintenance fence must be private and queryable before Docker mutates."""
+    zero = {"twist": [0.0] * 3, "headPose": [0.0] * 4, "bodyPose": [0.0] * 6}
+    status = service.robot_status().model_copy(
+        update={"requestedMotion": zero, "appliedMotion": zero}
+    )
+    monkeypatch.setattr(service._supervisor, "observe", lambda: status)
+    path = "/v2/maintenance/restart-fence"
+    assert client.post(path, json={"ttlSeconds": 120}).status_code == 401
+    assert client.post(path, headers=auth, json={"ttlSeconds": 120, "padding": "x" * 70000}).status_code == 413
+    assert client.post(path, headers=auth, json={"ttlSeconds": 119}).status_code == 400
+    created = client.post(path, headers=auth, json={"ttlSeconds": 120})
+    assert created.status_code == 200, created.text
+    fence = created.json()
+    assert fence["activeTask"] is False
+    assert fence["motionStopped"] is True
+    assert client.post(path, headers=auth, json={"ttlSeconds": 120}).status_code == 409
+    assert client.get(f"{path}/{fence['fenceId']}", headers=auth).json() == fence
+    assert client.delete(f"{path}/other-id", headers=auth).status_code == 400
+    assert client.delete(f"{path}/{fence['fenceId']}", headers=auth).status_code == 204
+    assert client.get(f"{path}/{fence['fenceId']}", headers=auth).status_code == 400
+
+
 def test_every_v1_route_except_health_requires_an_exact_bearer_token(
     client: TestClient,
 ):

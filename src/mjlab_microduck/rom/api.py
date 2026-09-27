@@ -22,6 +22,7 @@ from .contracts import (
     ActionDefinition,
     BoundedIdentifier,
     ContractModel,
+    RestartFence,
     RobotStatus,
     StatusObject,
     TaskCommandRequest,
@@ -109,6 +110,10 @@ class TaskEventPage(ContractModel):
     events: list[TaskEvent] = Field(max_length=100)
 
 
+class RestartFenceRequest(ContractModel):
+    ttlSeconds: Literal[120]
+
+
 class RequestBodyLimitMiddleware:
     """Reject bounded V1 request bodies without buffering chunked input."""
 
@@ -175,7 +180,10 @@ def _route_has_json_body(scope: Scope) -> bool:
         return False
     method = scope.get("method")
     path = scope.get("path", "")
-    return method in {"POST", "PUT"} and (path == "/v1" or path.startswith("/v1/") or path.startswith("/v2/navigation/"))
+    return method in {"POST", "PUT"} and (
+        path == "/v1"
+        or path.startswith(("/v1/", "/v2/navigation/", "/v2/maintenance/"))
+    )
 
 
 def _content_length(scope: Scope) -> int | None:
@@ -466,6 +474,37 @@ def create_app(service: SimulatorTaskService | None, bearer_token: str) -> FastA
     )
     def ready() -> ReadyResponse:
         return ready_response()
+
+    @app.post(
+        "/v2/maintenance/restart-fence",
+        response_model=RestartFence,
+        dependencies=[Depends(require_bearer)],
+    )
+    def acquire_restart_fence(request: RestartFenceRequest) -> RestartFence:
+        if service is None:
+            raise NotReady("simulator is not ready")
+        return service.acquire_restart_fence(request.ttlSeconds)
+
+    @app.get(
+        "/v2/maintenance/restart-fence/{fence_id}",
+        response_model=RestartFence,
+        dependencies=[Depends(require_bearer)],
+    )
+    def get_restart_fence(fence_id: str) -> RestartFence:
+        if service is None:
+            raise NotReady("simulator is not ready")
+        return service.restart_fence(fence_id)
+
+    @app.delete(
+        "/v2/maintenance/restart-fence/{fence_id}",
+        status_code=204,
+        dependencies=[Depends(require_bearer)],
+    )
+    def release_restart_fence(fence_id: str) -> Response:
+        if service is None:
+            raise NotReady("simulator is not ready")
+        service.release_restart_fence(fence_id)
+        return Response(status_code=204)
 
     @app.get(
         "/v1/catalog",
