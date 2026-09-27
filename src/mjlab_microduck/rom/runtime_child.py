@@ -996,6 +996,7 @@ class RuntimeChildHost:
 
             request_type = NavigationRuntimeRequest
             extra["navigation"] = message.payload.navigation
+            extra["poseSource"] = message.payload.poseSource
         request = request_type(
             **extra,
             schema="MICRODUCK_SIM_TASK_V1",

@@ -70,6 +70,8 @@ COPY src/mjlab_microduck/rom/__init__.py \
     /app/src/mjlab_microduck/rom/
 COPY src/mjlab_microduck/rom/navigation/__init__.py \
     src/mjlab_microduck/rom/navigation/apriltag.py \
+    src/mjlab_microduck/rom/navigation/calibrated_scene.py \
+    src/mjlab_microduck/rom/navigation/calibrated_v2.json \
     src/mjlab_microduck/rom/navigation/environment.py \
     src/mjlab_microduck/rom/navigation/follower.py \
     src/mjlab_microduck/rom/navigation/grid.py \

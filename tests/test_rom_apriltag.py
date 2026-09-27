@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import mujoco
 import numpy as np
@@ -27,10 +28,54 @@ def test_probe_world_corners_have_known_square_size():
             )
 
 
+def test_v2_probe_planes_keep_their_surveyed_poses_and_visual_only_size(tmp_path):
+    pytest.importorskip("cv2")
+    from mjlab_microduck.rom.navigation.calibrated_scene import canonical_v2_scene
+    from mjlab_microduck.rom.navigation.environment import add_apriltag_probe
+
+    model_path = tmp_path / "scene.xml"
+    model_path.write_text("<mujoco><asset/><worldbody/></mujoco>")
+    add_apriltag_probe(model_path, canonical_v2_scene())
+    root = ET.parse(model_path).getroot()
+    planes = {
+        int(geom.attrib["name"].rsplit("_", 1)[1]): geom
+        for geom in root.find("worldbody").findall("geom")
+    }
+    assert set(planes) == set(range(6))
+    for probe in PROBE_TAGS:
+        plane = planes[probe.tag_id]
+        assert [float(value) for value in plane.attrib["pos"].split()] == pytest.approx(probe.center_xyz)
+        assert [float(value) for value in plane.attrib["quat"].split()] == pytest.approx(probe.quat_wxyz)
+        assert plane.attrib["size"] == "0.0875 0.0875 0.001"
+        assert plane.attrib["contype"] == plane.attrib["conaffinity"] == "0"
+
+
+def test_v2_probe_rejects_a_moved_door_post(tmp_path):
+    pytest.importorskip("cv2")
+    from mjlab_microduck.rom.navigation.environment import add_apriltag_probe
+    from mjlab_microduck.rom.navigation_contracts import Scene
+
+    fixture = json.loads(
+        Path("src/mjlab_microduck/rom/navigation/calibrated_v2.json").read_text()
+    )
+    fixture["scene"]["obstacles"][1]["minX"] -= 0.01
+    model_path = tmp_path / "scene.xml"
+    model_path.write_text("<mujoco><asset/><worldbody/></mujoco>")
+    with pytest.raises(ValueError, match="noncanonical v2 scene"):
+        add_apriltag_probe(model_path, Scene.model_validate(fixture["scene"]))
+
+
 @pytest.mark.skipif(
     not os.environ.get("MICRODUCK_TEST_BUNDLE"), reason="requires real bundle"
 )
-def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
+@pytest.mark.parametrize(
+    "scene_file",
+    [
+        "tests/fixtures/navigation/calibrated-scenarios.json",
+        "src/mjlab_microduck/rom/navigation/calibrated_v2.json",
+    ],
+)
+def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch, scene_file):
     cv2 = pytest.importorskip("cv2")
     from mjlab_microduck.rom.main import load_verified_bundle
     from mjlab_microduck.rom.mujoco_runtime import MicroduckMujocoRuntime
@@ -38,9 +83,7 @@ def test_real_head_camera_tag_pose_matches_hidden_truth(monkeypatch):
     from mjlab_microduck.rom.navigation_contracts import NavigationProfile, Pose, Scene
 
     root = Path(os.environ["MICRODUCK_TEST_BUNDLE"])
-    fixture = json.loads(
-        Path("tests/fixtures/navigation/calibrated-scenarios.json").read_text()
-    )
+    fixture = json.loads(Path(scene_file).read_text())
     bundle = load_verified_bundle(root)
     installed = Installation(
         Scene.model_validate(fixture["scene"]),

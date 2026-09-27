@@ -131,6 +131,9 @@ class StartPayload(ContractModel):
     navigation: NavigationTaskRequest | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    poseSource: Literal["SIM_GROUND_TRUTH", "SIM_VISUAL_ODOMETRY"] = (
+        "SIM_GROUND_TRUTH"
+    )
     actionCode: BoundedIdentifier
     bundleDigest: str = Field(pattern=_DIGEST_PATTERN)
     parameters: ParameterObject

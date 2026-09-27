@@ -511,3 +511,37 @@ Stable operator signals:
 CLI errors are intentionally concise and omit paths, model contents, and
 tracebacks. Preserve the candidate, release configuration, promoted digest, and
 sanitized API transcript for audit; never preserve the bearer value.
+
+## 7. Navigation scene v2 installation and rollback
+
+Build the simulator image from the reviewed source commit that contains
+`src/mjlab_microduck/rom/navigation/calibrated_v2.json`; record the immutable
+image ID, verified locomotion bundle digest, and source commit. Keep the
+existing v1 image, `navigation.json`, provider map, and their identities for
+rollback. Do not edit a running container or overwrite an installed bundle.
+
+Copy the canonical v2 `scene` and `profile` into a new protected
+`navigation.json` beside the verified bundle, retaining the installation's
+`robotId` and `targetId`. The optional `navigation-qualification.json` is
+advisory: it reports
+`REPORTED_PASS` only when its bundle, map, profile, and runtime-source digests
+match. The executable installation identity comes from the bundle, scene,
+profile, robot, and target values, independent of this advisory report.
+
+Qualify both `SIM_GROUND_TRUTH` and `SIM_VISUAL_ODOMETRY` against the exact v2
+fixture as described in [the navigation experiment](rom/sensor-navigation-experiment.md#physical-scene-v2-qualification).
+Validate the staged installation with
+`uv run python -m mjlab_microduck.rom.navigation.installation --bundle /absolute/path/to/staged-bundle`
+and check that the reported installation identity matches the intended scene.
+Compile and inspect a fresh TAIROS provider map from that same staged
+`navigation.json`; confirm the desk and door-post cells are occupied and the
+doorway center remains traversable. Only then use the documented simulator
+and provider release procedures with immutable image and map identities.
+
+After rollout, compare the simulator's scene revision and map digest with the
+provider map. Check native desk/post contact, door passage, desk detour,
+terminal stopped command, and visual appearance in both Web camera modes.
+If any release gate fails, restore the retained v1 image, navigation
+installation, and provider map as one set, then recheck readiness and task
+identities. Preserve private qualification and rollback evidence without bearer
+values.

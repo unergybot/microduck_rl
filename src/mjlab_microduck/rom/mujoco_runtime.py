@@ -114,6 +114,21 @@ def _motion(command: DeploymentCommand) -> dict[str, list[float]]:
     }
 
 
+def gate_visual_arrival(result, estimator, now, pose, waiting_since):
+    """Hold position while a settled visual arrival awaits one valid tag fix."""
+    from .navigation.follower import Command
+
+    if not result.arrived:
+        return result, None
+    if estimator.can_confirm_arrival(now, pose):
+        return result, None
+    if waiting_since is None:
+        waiting_since = now
+    if now - waiting_since >= 3.0:
+        return Command(reason="LOCALIZATION_FAILED"), waiting_since
+    return Command(), waiting_since
+
+
 _JOINT_TARGET_MARGIN_RAD = 1e-3
 
 
@@ -146,6 +161,7 @@ class MicroduckMujocoRuntime:
         self._apriltag_experiment = _apriltag_experiment
         self._navigation_pose_source = navigation_pose_source
         self._visual_bootstrap_started_at = None
+        self._visual_arrival_wait_started_at = None
         self._bundle = bundle
         self._realtime = realtime
         self._clock = monotonic_clock
@@ -240,20 +256,40 @@ class MicroduckMujocoRuntime:
             add_apriltag_probe(model_path, self._navigation_installation.scene)
             correct_head_camera_xml(snapshot_root)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        self._v2_collision_ids = frozenset()
         if self._navigation_installation is not None:
+            from .navigation.environment import v2_collision_geom_names
+
+            self._v2_collision_ids = frozenset(
+                self._model.geom(name).id
+                for name in v2_collision_geom_names(self._navigation_installation.scene)
+            )
             # An unknown fixed collider would invalidate the approved map.
             for geom in range(self._model.ngeom):
                 static = self._model.body_weldid[self._model.geom_bodyid[geom]] == 0
                 colliding = (
                     self._model.geom_contype[geom] or self._model.geom_conaffinity[geom]
                 )
+                expected_floor = (
+                    self._model.geom_bodyid[geom] == 0
+                    and self._model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_PLANE
+                    and mujoco.mj_id2name(
+                        self._model, mujoco.mjtObj.mjOBJ_GEOM, geom
+                    ) == "floor"
+                    and np.allclose(self._model.geom_pos[geom], (0, 0, 0))
+                    and np.allclose(self._model.geom_quat[geom], (1, 0, 0, 0))
+                )
                 if (
                     static
                     and colliding
-                    and self._model.geom_type[geom] != mujoco.mjtGeom.mjGEOM_PLANE
+                    and not expected_floor
+                    and geom not in self._v2_collision_ids
                 ):
                     self._navigation_installation = None
                     break
+        for geom in self._v2_collision_ids:
+            self._model.geom_contype[geom] = 0
+            self._model.geom_conaffinity[geom] = 0
         self._data = mujoco.MjData(self._model)
         self._configure_model_addresses()
         self._validate_action_contract_semantics()
@@ -866,15 +902,21 @@ class MicroduckMujocoRuntime:
                 != self._navigation_pose_source
             ):
                 raise ValueError("navigation pose source changed after task approval")
-            for geom in range(self._model.ngeom):
-                name = (
-                    mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
-                )
-                if name.startswith("rom_navigation_obstacle_"):
+            if self._v2_collision_ids:
+                for geom in self._v2_collision_ids:
                     enabled = int(navigation is not None)
                     self._model.geom_contype[geom] = enabled
                     self._model.geom_conaffinity[geom] = enabled
-                    self._model.geom_rgba[geom, 3] = enabled
+            else:
+                for geom in range(self._model.ngeom):
+                    name = (
+                        mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom) or ""
+                    )
+                    if name.startswith("rom_navigation_obstacle_"):
+                        enabled = int(navigation is not None)
+                        self._model.geom_contype[geom] = enabled
+                        self._model.geom_conaffinity[geom] = enabled
+                        self._model.geom_rgba[geom, 3] = enabled
             if navigation is None:
                 self._reset_model_locked(self._rng, spec.reset_profile)
             self._navigator = None
@@ -885,6 +927,7 @@ class MicroduckMujocoRuntime:
                 if self._navigation_pose_source == "SIM_VISUAL_ODOMETRY":
                     self._navigation_estimator = None
                     self._visual_bootstrap_started_at = float(self._data.time)
+                    self._visual_arrival_wait_started_at = None
                 self._navigator = Navigator(
                     navigation.proposal.scene,
                     navigation.proposal.profile,
@@ -1273,16 +1316,19 @@ class MicroduckMujocoRuntime:
                             yaw_rate=yaw_rate,
                         )
                     if (
-                        result.arrived
+                        self._navigation_pose_source == "SIM_VISUAL_ODOMETRY"
                         and self._navigation_estimator is not None
                         and hasattr(self._navigation_estimator, "can_confirm_arrival")
-                        and not self._navigation_estimator.can_confirm_arrival(
-                            float(self._data.time), pose
-                        )
                     ):
-                        from .navigation.follower import Command
-
-                        result = Command(reason="LOCALIZATION_FAILED")
+                        result, self._visual_arrival_wait_started_at = (
+                            gate_visual_arrival(
+                                result,
+                                self._navigation_estimator,
+                                float(self._data.time),
+                                pose,
+                                self._visual_arrival_wait_started_at,
+                            )
+                        )
                     self._navigation_result = result
                     self._requested_command, self._command, self._limiting_reason = (
                         self._command_for(

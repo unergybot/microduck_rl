@@ -2270,6 +2270,8 @@ def test_docker_context_policies_allow_only_exact_rom_copy_inputs() -> None:
         "src/mjlab_microduck/rom/navigation_service.py",
         "src/mjlab_microduck/rom/navigation/__init__.py",
         "src/mjlab_microduck/rom/navigation/apriltag.py",
+        "src/mjlab_microduck/rom/navigation/calibrated_scene.py",
+        "src/mjlab_microduck/rom/navigation/calibrated_v2.json",
         "src/mjlab_microduck/rom/navigation/environment.py",
         "src/mjlab_microduck/rom/navigation/follower.py",
         "src/mjlab_microduck/rom/navigation/grid.py",

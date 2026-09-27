@@ -126,3 +126,73 @@ frame tests, and measure an uncertainty bound for arrival. ToF still needs
 head-joint reprojection and invalid/floor classification before it can alter
 commands. Physical marker placement and actual hardware odometry require a
 separate qualification before any runtime feature flag or robot deployment.
+
+## Physical scene v2 qualification
+
+`src/mjlab_microduck/rom/navigation/calibrated_v2.json` is the canonical v2
+scene, profile, and five-scenario set. It keeps the calibrated v1 fixture
+available. The desk footprint and the two door-post footprints in its `scene`
+are the same rectangles used by the navigation grid and native MuJoCo collision
+geometry. The door posts are centered at x = ±0.40 m, leaving a 0.75 m
+physical opening. The overhead header is a physical collision geom above the
+opening; the marker pads and 17.5 cm white AprilTag planes remain visual only.
+The runtime enables the exact v2 obstacle collision set for navigation and
+disables it for ordinary action tasks.
+
+The unreachable scenario starts just outside the desk's physical contact
+radius but inside the map's conservative clearance zone. This allows both
+ground-truth and camera-based controllers to detect `PATH_BLOCKED` without
+placing the robot inside a solid tabletop.
+
+Use an immutable, verified locomotion bundle and keep the two reports outside
+the bundle. The commands evaluate ten seeds for each of open walking, door
+turning, desk detour, unreachable-path rejection, and settling. Each result
+checks the expected terminal reason, confirmed stop, mapped-obstacle contacts,
+and hidden-truth arrival margins. The visual-odometry report also records tag
+fixes and OpenCV/texture identities.
+
+```bash
+uv run --group rom-vision python scripts/qualify_rom_navigation.py \
+  --bundle /absolute/path/to/verified-bundle \
+  --scenarios src/mjlab_microduck/rom/navigation/calibrated_v2.json \
+  --seed-count 10 --pose-source SIM_GROUND_TRUTH \
+  --output /private/path/v2-ground-truth.json
+uv run --group rom-vision python scripts/qualify_rom_navigation.py \
+  --bundle /absolute/path/to/verified-bundle \
+  --scenarios src/mjlab_microduck/rom/navigation/calibrated_v2.json \
+  --seed-count 10 --pose-source SIM_VISUAL_ODOMETRY \
+  --output /private/path/v2-visual-odometry.json
+```
+
+Before release, inspect every `runs[].passed` value and the collision, stop,
+and arrival fields in both reports. Record `runtimeSourceDigest`,
+`scenarioDigest`, `bundleDigest`, `mapDigest`, and `profileDigest` together
+with the source commit and image ID. A passing v1 report is not qualification
+for v2. These deterministic simulator runs do not qualify physical MicroDuck
+hardware, marker placement error, dynamic camera noise, or occlusion.
+
+On 2026-09-26, the verified bundle
+`sha256:e643915c2f90df9df7bd9b898bb544218eaadb61512ae6d6417ea03112c66f15`
+passed 50/50 v2 runs in each mode. Both reports found zero mapped-obstacle
+contacts, confirmed a stopped command in all 50 runs, and returned the
+expected reason in each of the five scenarios. Ground truth's maximum true
+arrival distance/heading were 0.07985 m/0.13653 rad. Visual odometry's were
+0.07781 m/0.09972 rad; its maximum estimated-versus-true pose error was
+0.05811 m/0.07465 rad, and each reachable run accepted at least five visual
+fixes. Each of the ten unreachable visual runs acquired two fixes before
+returning `PATH_BLOCKED`.
+
+The reports are private at
+`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-ground-truth-r3.json`
+and
+`/home/mcao/MyCode/microduck_rl/.worktrees/microduck-scene-layout/.superpowers/sdd/2026-09-26-microduck-native-scene-layout/v2-visual-odometry-r3.json`.
+They share `runtimeSourceDigest`
+`sha256:478556b9508e1e93e76c01ca8246cda3bacef35a6e30cd32a1298618711a7ab7`,
+`scenarioDigest`
+`sha256:949f1353441d5e0218fbd8f43bc00971a5daed7fc26a566242c0d612d1d87c1a`,
+`mapDigest`
+`sha256:ef8343d8b5a8a00c3256860e936aebe5c973c7c8d032bc7dcd84cf50ff84fdac`,
+and `profileDigest`
+`sha256:0d52f5a1e24f7149ac45cd3b33cb98e4dedba542417c539d7c0c03f561f26275`.
+These are local qualification results; live duale5 rollout and browser
+acceptance remain separate release gates.
