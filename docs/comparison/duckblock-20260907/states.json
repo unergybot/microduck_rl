@@ -1,0 +1,992 @@
+[
+  {
+    "second": 0,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11648584927029791,
+    "fallen": false
+  },
+  {
+    "second": 1,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649936150136633,
+    "fallen": false
+  },
+  {
+    "second": 2,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11647822851924441,
+    "fallen": false
+  },
+  {
+    "second": 3,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11648330815380215,
+    "fallen": false
+  },
+  {
+    "second": 4,
+    "mode": "sitstand",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651932467313894,
+    "fallen": false
+  },
+  {
+    "second": 5,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059405352502739026,
+    "fallen": false
+  },
+  {
+    "second": 6,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05943399125283161,
+    "fallen": false
+  },
+  {
+    "second": 7,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05944382271584508,
+    "fallen": false
+  },
+  {
+    "second": 8,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05944820735483224,
+    "fallen": false
+  },
+  {
+    "second": 9,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945026315166329,
+    "fallen": false
+  },
+  {
+    "second": 10,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059451170149372644,
+    "fallen": false
+  },
+  {
+    "second": 11,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945155135737793,
+    "fallen": false
+  },
+  {
+    "second": 12,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059451800618785265,
+    "fallen": false
+  },
+  {
+    "second": 13,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.0594519331148959,
+    "fallen": false
+  },
+  {
+    "second": 14,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945198729707062,
+    "fallen": false
+  },
+  {
+    "second": 15,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059452016135059536,
+    "fallen": false
+  },
+  {
+    "second": 16,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945203004217348,
+    "fallen": false
+  },
+  {
+    "second": 17,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059452035950747564,
+    "fallen": false
+  },
+  {
+    "second": 18,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.059452039383238044,
+    "fallen": false
+  },
+  {
+    "second": 19,
+    "mode": "sitstand",
+    "sitFlag": 1,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945204181261581,
+    "fallen": false
+  },
+  {
+    "second": 20,
+    "mode": "sitstand",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.05945204346772125,
+    "fallen": false
+  },
+  {
+    "second": 21,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.1164378550994031,
+    "fallen": false
+  },
+  {
+    "second": 22,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.1164780461868137,
+    "fallen": false
+  },
+  {
+    "second": 23,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11650417821462608,
+    "fallen": false
+  },
+  {
+    "second": 24,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11648652704016935,
+    "fallen": false
+  },
+  {
+    "second": 25,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649664894868683,
+    "fallen": false
+  },
+  {
+    "second": 26,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11650607430857499,
+    "fallen": false
+  },
+  {
+    "second": 27,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11648616082882121,
+    "fallen": false
+  },
+  {
+    "second": 28,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.1164908131257893,
+    "fallen": false
+  },
+  {
+    "second": 29,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651751354609574,
+    "fallen": false
+  },
+  {
+    "second": 30,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.1164833236531977,
+    "fallen": false
+  },
+  {
+    "second": 31,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651151884365434,
+    "fallen": false
+  },
+  {
+    "second": 32,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651538296797657,
+    "fallen": false
+  },
+  {
+    "second": 33,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11650390340647473,
+    "fallen": false
+  },
+  {
+    "second": 34,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649017889582029,
+    "fallen": false
+  },
+  {
+    "second": 35,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649439111905352,
+    "fallen": false
+  },
+  {
+    "second": 36,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11650111563196139,
+    "fallen": false
+  },
+  {
+    "second": 37,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11650272193695271,
+    "fallen": false
+  },
+  {
+    "second": 38,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649405661545542,
+    "fallen": false
+  },
+  {
+    "second": 39,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651513022969225,
+    "fallen": false
+  },
+  {
+    "second": 40,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11646204590142124,
+    "fallen": false
+  },
+  {
+    "second": 41,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11649217092182329,
+    "fallen": false
+  },
+  {
+    "second": 42,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11651088756022118,
+    "fallen": false
+  },
+  {
+    "second": 43,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11647998552620836,
+    "fallen": false
+  },
+  {
+    "second": 44,
+    "mode": "walk",
+    "sitFlag": 0,
+    "inputLocked": false,
+    "headMode": false,
+    "recovery": null,
+    "postKickLock": 0,
+    "command": [
+      0,
+      0,
+      0
+    ],
+    "commandActive": false,
+    "effectiveCmd": [
+      0,
+      0,
+      0
+    ],
+    "height": 0.11648899573098374,
+    "fallen": false
+  }
+]

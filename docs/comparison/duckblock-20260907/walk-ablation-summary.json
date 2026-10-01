@@ -1,0 +1,411 @@
+{
+  "experimentId": "duckblock-walk-ablation-20260907-v1",
+  "candidateCount": 2,
+  "caseCount": 64,
+  "artifactCount": 73,
+  "reportBytes": 193629,
+  "maxArtifactBytes": 4286738,
+  "totalArtifactBytes": 195387727,
+  "hashesVerified": true,
+  "matrix": [
+    {
+      "candidateId": "self-handoff",
+      "scenario": "STAND_HOLD",
+      "passed": 8,
+      "total": 8,
+      "reasons": {
+        "PASSED": 8
+      }
+    },
+    {
+      "candidateId": "self-handoff",
+      "scenario": "STAND_TO_SIT",
+      "passed": 0,
+      "total": 8,
+      "reasons": {
+        "TRANSITION_TIMEOUT": 8
+      }
+    },
+    {
+      "candidateId": "self-handoff",
+      "scenario": "SIT_TO_STAND",
+      "passed": 8,
+      "total": 8,
+      "reasons": {
+        "PASSED": 8
+      }
+    },
+    {
+      "candidateId": "self-handoff",
+      "scenario": "STAND_SIT_STAND",
+      "passed": 0,
+      "total": 8,
+      "reasons": {
+        "TRANSITION_TIMEOUT": 8
+      }
+    },
+    {
+      "candidateId": "walking-handoff",
+      "scenario": "STAND_HOLD",
+      "passed": 8,
+      "total": 8,
+      "reasons": {
+        "PASSED": 8
+      }
+    },
+    {
+      "candidateId": "walking-handoff",
+      "scenario": "STAND_TO_SIT",
+      "passed": 0,
+      "total": 8,
+      "reasons": {
+        "TRANSITION_TIMEOUT": 8
+      }
+    },
+    {
+      "candidateId": "walking-handoff",
+      "scenario": "SIT_TO_STAND",
+      "passed": 8,
+      "total": 8,
+      "reasons": {
+        "PASSED": 8
+      }
+    },
+    {
+      "candidateId": "walking-handoff",
+      "scenario": "STAND_SIT_STAND",
+      "passed": 0,
+      "total": 8,
+      "reasons": {
+        "TRANSITION_TIMEOUT": 8
+      }
+    }
+  ],
+  "seed7SitDiagnostics": [
+    {
+      "candidateId": "self-handoff",
+      "reason": "TRANSITION_TIMEOUT",
+      "sampleCount": 50,
+      "windowStartSeconds": 9.02,
+      "windowEndSeconds": 10.0,
+      "criteriaPassSamples": {
+        "pose": 0,
+        "height": 50,
+        "tilt": 50,
+        "speed": 50
+      },
+      "jointErrors": [
+        {
+          "joint": "right_hip_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.17473316385146623,
+          "finalErrorRad": 0.17473316385146623,
+          "minErrorRad": 0.17448337160305968,
+          "maxErrorRad": 0.17473316385146623,
+          "meanErrorRad": 0.1746149194082764,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_hip_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.16378197697136754,
+          "finalErrorRad": 0.16378197697136754,
+          "minErrorRad": 0.16378197697136754,
+          "maxErrorRad": 0.163914874082819,
+          "meanErrorRad": 0.1638448758980428,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_ankle",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.09153900264663065,
+          "finalErrorRad": 0.09153900264663065,
+          "minErrorRad": 0.09153873470202425,
+          "maxErrorRad": 0.09153975548980747,
+          "meanErrorRad": 0.09153899392165599,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_hip_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.08809939072972699,
+          "finalErrorRad": 0.08809939072972699,
+          "minErrorRad": 0.08809939072972699,
+          "maxErrorRad": 0.08811957215607907,
+          "meanErrorRad": 0.08810766736254262,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "right_ankle",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.07965244546819343,
+          "finalErrorRad": 0.07965244546819343,
+          "minErrorRad": 0.07965244546819343,
+          "maxErrorRad": 0.07986560114334629,
+          "meanErrorRad": 0.07975400051775748,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "left_knee",
+          "targetRad": 1.350000023841858,
+          "finalPositionRad": 1.2820973514317577,
+          "finalErrorRad": 0.06790267241010017,
+          "minErrorRad": 0.06774540816862529,
+          "maxErrorRad": 0.06790267241010017,
+          "meanErrorRad": 0.06782819837673547,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_knee",
+          "targetRad": -1.350000023841858,
+          "finalPositionRad": -1.283158816189041,
+          "finalErrorRad": 0.06684120765281687,
+          "minErrorRad": 0.06655643965774805,
+          "maxErrorRad": 0.06684120765281687,
+          "meanErrorRad": 0.06670532578849717,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "left_hip_pitch",
+          "targetRad": -0.40790000557899475,
+          "finalPositionRad": -0.471904027752844,
+          "finalErrorRad": 0.06400402217384926,
+          "minErrorRad": 0.06398773927623208,
+          "maxErrorRad": 0.06400402217384926,
+          "meanErrorRad": 0.06399722387200292,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_hip_pitch",
+          "targetRad": 0.40790000557899475,
+          "finalPositionRad": 0.4666628880924688,
+          "finalErrorRad": 0.05876288251347406,
+          "minErrorRad": 0.05867931310097546,
+          "maxErrorRad": 0.05876288251347406,
+          "meanErrorRad": 0.05872344178714215,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.03632115847827526,
+          "finalErrorRad": 0.03632115847827526,
+          "minErrorRad": 0.03628955914748218,
+          "maxErrorRad": 0.03632115847827526,
+          "meanErrorRad": 0.036306552133281045,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "neck_pitch",
+          "targetRad": 0.3490658402442932,
+          "finalPositionRad": 0.32239453976101506,
+          "finalErrorRad": 0.02667130048327815,
+          "minErrorRad": 0.02626234798603827,
+          "maxErrorRad": 0.02667130048327815,
+          "meanErrorRad": 0.0264746967514362,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.008760989367934562,
+          "finalErrorRad": 0.008760989367934562,
+          "minErrorRad": 0.008760989367934562,
+          "maxErrorRad": 0.008776200566496022,
+          "meanErrorRad": 0.00876868384219546,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_pitch",
+          "targetRad": 0.3490658402442932,
+          "finalPositionRad": 0.3460092643567927,
+          "finalErrorRad": 0.0030565758875005233,
+          "minErrorRad": 0.0030208407080414834,
+          "maxErrorRad": 0.0030565758875005233,
+          "meanErrorRad": 0.003040309221522326,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_hip_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.0012331737075401798,
+          "finalErrorRad": 0.0012331737075401798,
+          "minErrorRad": 0.001152613262054409,
+          "maxErrorRad": 0.0012331737075401798,
+          "meanErrorRad": 0.0011955444211173784,
+          "overThresholdSamples": 0
+        }
+      ],
+      "final": {
+        "maxPoseErrorRad": 0.17473316385146623,
+        "heightM": 0.059447189214051684,
+        "maxTiltRad": 0.028705943521125706,
+        "maxJointSpeedRadps": 0.0003701394147150868
+      }
+    },
+    {
+      "candidateId": "walking-handoff",
+      "reason": "TRANSITION_TIMEOUT",
+      "sampleCount": 50,
+      "windowStartSeconds": 9.02,
+      "windowEndSeconds": 10.0,
+      "criteriaPassSamples": {
+        "pose": 0,
+        "height": 50,
+        "tilt": 50,
+        "speed": 50
+      },
+      "jointErrors": [
+        {
+          "joint": "right_hip_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.17473316385146623,
+          "finalErrorRad": 0.17473316385146623,
+          "minErrorRad": 0.17448337160305968,
+          "maxErrorRad": 0.17473316385146623,
+          "meanErrorRad": 0.1746149194082764,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_hip_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.16378197697136754,
+          "finalErrorRad": 0.16378197697136754,
+          "minErrorRad": 0.16378197697136754,
+          "maxErrorRad": 0.163914874082819,
+          "meanErrorRad": 0.1638448758980428,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_ankle",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.09153900264663065,
+          "finalErrorRad": 0.09153900264663065,
+          "minErrorRad": 0.09153873470202425,
+          "maxErrorRad": 0.09153975548980747,
+          "meanErrorRad": 0.09153899392165599,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "left_hip_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.08809939072972699,
+          "finalErrorRad": 0.08809939072972699,
+          "minErrorRad": 0.08809939072972699,
+          "maxErrorRad": 0.08811957215607907,
+          "meanErrorRad": 0.08810766736254262,
+          "overThresholdSamples": 50
+        },
+        {
+          "joint": "right_ankle",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.07965244546819343,
+          "finalErrorRad": 0.07965244546819343,
+          "minErrorRad": 0.07965244546819343,
+          "maxErrorRad": 0.07986560114334629,
+          "meanErrorRad": 0.07975400051775748,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "left_knee",
+          "targetRad": 1.350000023841858,
+          "finalPositionRad": 1.2820973514317577,
+          "finalErrorRad": 0.06790267241010017,
+          "minErrorRad": 0.06774540816862529,
+          "maxErrorRad": 0.06790267241010017,
+          "meanErrorRad": 0.06782819837673547,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_knee",
+          "targetRad": -1.350000023841858,
+          "finalPositionRad": -1.283158816189041,
+          "finalErrorRad": 0.06684120765281687,
+          "minErrorRad": 0.06655643965774805,
+          "maxErrorRad": 0.06684120765281687,
+          "meanErrorRad": 0.06670532578849717,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "left_hip_pitch",
+          "targetRad": -0.40790000557899475,
+          "finalPositionRad": -0.471904027752844,
+          "finalErrorRad": 0.06400402217384926,
+          "minErrorRad": 0.06398773927623208,
+          "maxErrorRad": 0.06400402217384926,
+          "meanErrorRad": 0.06399722387200292,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_hip_pitch",
+          "targetRad": 0.40790000557899475,
+          "finalPositionRad": 0.4666628880924688,
+          "finalErrorRad": 0.05876288251347406,
+          "minErrorRad": 0.05867931310097546,
+          "maxErrorRad": 0.05876288251347406,
+          "meanErrorRad": 0.05872344178714215,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_roll",
+          "targetRad": 0.0,
+          "finalPositionRad": 0.03632115847827526,
+          "finalErrorRad": 0.03632115847827526,
+          "minErrorRad": 0.03628955914748218,
+          "maxErrorRad": 0.03632115847827526,
+          "meanErrorRad": 0.036306552133281045,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "neck_pitch",
+          "targetRad": 0.3490658402442932,
+          "finalPositionRad": 0.32239453976101506,
+          "finalErrorRad": 0.02667130048327815,
+          "minErrorRad": 0.02626234798603827,
+          "maxErrorRad": 0.02667130048327815,
+          "meanErrorRad": 0.0264746967514362,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.008760989367934562,
+          "finalErrorRad": 0.008760989367934562,
+          "minErrorRad": 0.008760989367934562,
+          "maxErrorRad": 0.008776200566496022,
+          "meanErrorRad": 0.00876868384219546,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "head_pitch",
+          "targetRad": 0.3490658402442932,
+          "finalPositionRad": 0.3460092643567927,
+          "finalErrorRad": 0.0030565758875005233,
+          "minErrorRad": 0.0030208407080414834,
+          "maxErrorRad": 0.0030565758875005233,
+          "meanErrorRad": 0.003040309221522326,
+          "overThresholdSamples": 0
+        },
+        {
+          "joint": "right_hip_yaw",
+          "targetRad": 0.0,
+          "finalPositionRad": -0.0012331737075401798,
+          "finalErrorRad": 0.0012331737075401798,
+          "minErrorRad": 0.001152613262054409,
+          "maxErrorRad": 0.0012331737075401798,
+          "meanErrorRad": 0.0011955444211173784,
+          "overThresholdSamples": 0
+        }
+      ],
+      "final": {
+        "maxPoseErrorRad": 0.17473316385146623,
+        "heightM": 0.059447189214051684,
+        "maxTiltRad": 0.028705943521125706,
+        "maxJointSpeedRadps": 0.0003701394147150868
+      }
+    }
+  ],
+  "sizeLimitsPassed": true,
+  "falls": 0,
+  "videoUnavailableCases": []
+}

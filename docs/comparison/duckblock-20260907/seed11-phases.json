@@ -1,0 +1,64 @@
+[
+  {
+    "candidateId": "self-handoff",
+    "index": 0,
+    "target": "STAND",
+    "controlSteps": 1609,
+    "settledSteps": 1578,
+    "holdSteps": 1500,
+    "durationSeconds": 32.18,
+    "transitionSeconds": 2.18,
+    "transitionCompleted": true,
+    "policyTransitions": [
+      {
+        "atPhaseSeconds": 2.0,
+        "fromPolicy": "SITSTAND",
+        "toPolicy": "WALK",
+        "previousActionCleared": true
+      }
+    ],
+    "policyModes": [
+      "SITSTAND",
+      "WALK"
+    ],
+    "acquisitionCondition": "FINAL_POLICY_AND_COMMAND_PLUS_POSE",
+    "finalPolicy": "WALK",
+    "finalCommandSit": false,
+    "maxPoseRmseRad": 0.5391147175066909,
+    "maxHeightDeviationM": 0.05451025009951994,
+    "status": "PASSED",
+    "reason": "PASSED",
+    "holdSeconds": 30.0
+  },
+  {
+    "candidateId": "walking-handoff",
+    "index": 0,
+    "target": "STAND",
+    "controlSteps": 1615,
+    "settledSteps": 1578,
+    "holdSteps": 1500,
+    "durationSeconds": 32.3,
+    "transitionSeconds": 2.3000000000000003,
+    "transitionCompleted": true,
+    "policyTransitions": [
+      {
+        "atPhaseSeconds": 2.0,
+        "fromPolicy": "SITSTAND",
+        "toPolicy": "WALK",
+        "previousActionCleared": true
+      }
+    ],
+    "policyModes": [
+      "SITSTAND",
+      "WALK"
+    ],
+    "acquisitionCondition": "FINAL_POLICY_AND_COMMAND_PLUS_POSE",
+    "finalPolicy": "WALK",
+    "finalCommandSit": false,
+    "maxPoseRmseRad": 0.5391147175066909,
+    "maxHeightDeviationM": 0.05451025009951994,
+    "status": "PASSED",
+    "reason": "PASSED",
+    "holdSeconds": 30.0
+  }
+]

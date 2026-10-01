@@ -1,0 +1,25 @@
+{
+  "timestep": [
+    0.005,
+    0.005
+  ],
+  "geomCounts": [
+    18,
+    82
+  ],
+  "bodyCounts": [
+    17,
+    16
+  ],
+  "matches": {
+    "actuator_gainprm": true,
+    "actuator_biasprm": true,
+    "actuator_ctrlrange": true,
+    "actuator_forcerange": true,
+    "actuator_ctrllimited": true,
+    "actuator_forcelimited": true,
+    "actuator_gear": true,
+    "body_massExceptBall": true,
+    "body_inertiaExceptBall": true
+  }
+}
