@@ -25,7 +25,7 @@ def test_managed_checkpoint_publication_is_atomic_and_hash_bound(tmp_path):
     result=managed.publish_checkpoint(source,tmp_path)
     assert result['sha256']=='sha256:'+hashlib.sha256(source.read_bytes()).hexdigest()
     assert json.loads((tmp_path/'checkpoint.json').read_text())['artifacts']==[result]
-    assert (tmp_path/'checkpoint.pt').read_bytes()==source.read_bytes()
+    assert (tmp_path/result['artifactId']).read_bytes()==source.read_bytes()
     assert not list(tmp_path.glob('*.tmp'))
 
 def test_resume_rejects_unmanaged_or_modified_checkpoint(tmp_path):
@@ -43,3 +43,27 @@ def test_failure_writes_sanitized_result_without_ready(tmp_path):
     result=json.loads((tmp_path/'result.json').read_text())
     assert result['success'] is False
     assert 'private' not in (tmp_path/'result.json').read_text()
+
+
+def test_interrupted_checkpoint_publish_preserves_previous_generation(tmp_path, monkeypatch):
+    source=tmp_path/'model.pt'; source.write_bytes(b'previous')
+    old=managed.publish_checkpoint(source,tmp_path)
+    source.write_bytes(b'next generation')
+    monkeypatch.setattr(managed, 'atomic_json', lambda *args: (_ for _ in ()).throw(OSError('interrupted')))
+    with pytest.raises(OSError): managed.publish_checkpoint(source,tmp_path)
+    manifest=json.loads((tmp_path/'checkpoint.json').read_text())
+    assert manifest['artifacts']==[old]
+    assert managed.artifact(tmp_path/old['artifactId'], 'CHECKPOINT')==old
+
+
+def test_completed_training_survives_export_failure(tmp_path):
+    request=tmp_path/'request.json';request.write_text(json.dumps(job()))
+    class ExportFailure:
+        def execute(self, value, directory):
+            managed.atomic_json(directory/'execution.json', {'executionState':'SUCCEEDED'})
+            raise RuntimeError('export failed with private details')
+    assert managed.run_managed(request, ExportFailure())==1
+    result=json.loads((tmp_path/'result.json').read_text())
+    assert result['executionState']=='SUCCEEDED'
+    assert result['exportState']=='FAILED'
+    assert result['detailCode']=='MANAGED_EXPORT_FAILED'

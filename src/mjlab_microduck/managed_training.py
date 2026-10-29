@@ -48,12 +48,19 @@ def artifact(path, kind):
 
 def publish_checkpoint(source, directory):
     source = Path(source); directory = Path(directory)
-    temporary = directory / 'checkpoint.tmp'; final = directory / 'checkpoint.pt'
+    temporary = directory / 'checkpoint.tmp'
     with source.open('rb') as src, temporary.open('wb') as dst:
         shutil.copyfileobj(src, dst); dst.flush(); os.fsync(dst.fileno())
+    digest = artifact(temporary, 'CHECKPOINT')['sha256'].removeprefix('sha256:')
+    final = directory / ('checkpoint-' + digest + '.pt')
+    previous = json.loads((directory / 'checkpoint.json').read_text()).get('artifacts', []) if (directory / 'checkpoint.json').is_file() else []
     os.replace(temporary, final)
     value = artifact(final, 'CHECKPOINT')
     atomic_json(directory / 'checkpoint.json', {'success': False, 'artifacts': [value]})
+    # Only prune after the durable pointer commits; keep its predecessor for interrupted readers.
+    keep = {value['artifactId']} | {a['artifactId'] for a in previous}
+    for old in directory.glob('checkpoint-*.pt'):
+        if old.name not in keep: old.unlink()
     return value
 
 
@@ -61,8 +68,11 @@ def resume_checkpoint(job, directory):
     if not job.get('parentJobId'): return None
     parent = job['parentJobId']
     require(bool(re.fullmatch(r'[-A-Za-z0-9_]{1,80}', parent)), 'MANAGED_CHECKPOINT_INVALID')
-    path = directory.parent / parent / 'checkpoint.pt'
-    manifest = path.parent / 'checkpoint.json'
+    manifest = directory.parent / parent / 'checkpoint.json'
+    require(manifest.is_file() and not manifest.is_symlink(), 'MANAGED_CHECKPOINT_UNVERIFIED')
+    matches = [a for a in json.loads(manifest.read_text()).get('artifacts', []) if a.get('kind') == 'CHECKPOINT' and a.get('sha256') == job['checkpointSha256']]
+    require(len(matches) == 1 and bool(re.fullmatch(r'checkpoint-[a-f0-9]{64}\.pt', matches[0].get('artifactId', ''))), 'MANAGED_CHECKPOINT_UNVERIFIED')
+    path = manifest.parent / matches[0]['artifactId']
     require(path.is_file() and not path.is_symlink() and manifest.is_file() and not manifest.is_symlink(), 'MANAGED_CHECKPOINT_UNVERIFIED')
     value = artifact(path, 'CHECKPOINT')
     require(value['sha256'] == job['checkpointSha256'] and value in json.loads(manifest.read_text()).get('artifacts', []), 'MANAGED_CHECKPOINT_UNVERIFIED')
@@ -133,16 +143,18 @@ class Runtime:
             def managed_save(path, infos=None):
                 require(shutil.disk_usage(directory).free >= 1 << 30, 'MANAGED_DISK_EXHAUSTED')
                 save(path, infos); publish_checkpoint(Path(path), directory)
-                # Persistent checkpoints are bounded: one complete resume point and current runner file.
+                # Bounded immutable checkpoint generations plus the current runner file.
                 for previous in work.glob('model_*.pt'):
                     if previous != Path(path): previous.unlink()
             runner.save = managed_save
             runner.learn(num_learning_iterations=job['iterations'], init_at_random_ep_len=True)
-            if not (directory / 'checkpoint.pt').is_file(): managed_save(str(work / 'model_final.pt'))
+            if not (directory / 'checkpoint.json').is_file(): managed_save(str(work / 'model_final.pt'))
+            checkpoint_artifact = json.loads((directory / 'checkpoint.json').read_text())['artifacts'][0]
+            atomic_json(directory / 'execution.json', {'executionState': 'SUCCEEDED'})
             runner.export_policy_to_onnx(str(directory), 'policy.tmp.onnx')
             exported = directory / 'policy.tmp.onnx'
             attach_metadata_to_onnx(str(exported), get_base_metadata(env, run_path=job['jobId']))
-            attach_microduck_metadata(exported, task_id=task, source_commit=Path('/opt/rom-trainer/source-revision.txt').read_text().strip(), checkpoint='checkpoint.pt', run_identity=job['jobId'])
+            attach_microduck_metadata(exported, task_id=task, source_commit=Path('/opt/rom-trainer/source-revision.txt').read_text().strip(), checkpoint=checkpoint_artifact['artifactId'], run_identity=job['jobId'])
             import numpy as np
             import onnxruntime as ort
             session = ort.InferenceSession(str(exported), providers=['CPUExecutionProvider'])
@@ -155,7 +167,7 @@ class Runtime:
             policy = artifact(directory / 'policy.onnx', 'ONNX')
             evidence.update(onnxFinite=True, observationDimension=61, actionDimension=14, controlHz=50,
                             peakGpuMemoryBytes=max(peak[0], torch.cuda.max_memory_allocated()), policySha256=policy['sha256'])
-            return {'success': True, 'artifacts': [artifact(directory / 'checkpoint.pt', 'CHECKPOINT'), policy], 'evidence': evidence}
+            return {'success': True, 'executionState': 'SUCCEEDED', 'exportState': 'SUCCEEDED', 'artifacts': [checkpoint_artifact, policy], 'evidence': evidence}
         finally:
             stopped.set(); sampler.join(timeout=1); env.close()
 
@@ -168,7 +180,11 @@ def run_managed(request_path, runtime=None):
     except Exception as error:
         checkpoint = directory / 'checkpoint.json'
         code = str(error) if isinstance(error, ValueError) and re.fullmatch(r'MANAGED_[A-Z_]{1,55}', str(error)) else 'MANAGED_TRAINING_FAILED'
-        result = {'success': False, 'detailCode': code, 'artifacts': []}
+        execution = directory / 'execution.json'
+        trained = execution.is_file() and json.loads(execution.read_text()).get('executionState') == 'SUCCEEDED'
+        if trained: code = 'MANAGED_EXPORT_FAILED'
+        result = {'success': False, 'executionState': 'SUCCEEDED' if trained else 'FAILED',
+                  'exportState': 'FAILED' if trained else 'PENDING', 'detailCode': code, 'artifacts': []}
         if checkpoint.is_file(): result['artifacts'] = json.loads(checkpoint.read_text()).get('artifacts', [])
     atomic_json(directory / 'result.json', result)
     return 0 if result['success'] else 1
