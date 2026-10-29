@@ -16,11 +16,18 @@ def require(condition, code):
         raise ValueError(code)
 
 
+def gpu_sharing_mode(job):
+    mode = job['scope'].get('gpuSharingMode', '')
+    require(mode in ('', 'EXCLUSIVE', 'SHARED_DESKTOP'), 'MANAGED_GPU_SHARING_MODE_INVALID')
+    return mode or 'EXCLUSIVE'
+
+
 def validate_request(job):
     allowed = {'jobId', 'scope', 'requestDigest', 'kind', 'numEnvs', 'iterations', 'seed', 'timeoutSeconds',
                'parentJobId', 'checkpointSha256', 'idempotencyKey', 'limits'}
     require(set(job) <= allowed and job.get('scope', {}).get('environment') == 'SIMULATOR', 'MANAGED_SIMULATOR_REQUIRED')
     require(job.get('kind') in ('COMMISSION', 'TRAIN') and re.fullmatch(r'[-A-Za-z0-9_]{1,80}', job.get('jobId', '')), 'MANAGED_RECIPE_INVALID')
+    require(gpu_sharing_mode(job) != 'SHARED_DESKTOP' or job['kind'] == 'COMMISSION', 'MANAGED_SHARED_COMMISSION_REQUIRED')
     require(all(type(job.get(k)) is int for k in ('numEnvs', 'iterations', 'seed', 'timeoutSeconds')), 'MANAGED_PARAMETERS_INVALID')
     require(1 <= job['numEnvs'] <= 4096 and 1 <= job['iterations'] <= 20000 and 0 <= job['seed'] <= 2147483647 and 1 <= job['timeoutSeconds'] <= 43200, 'MANAGED_PARAMETERS_INVALID')
     if job['kind'] == 'COMMISSION':
@@ -81,6 +88,7 @@ def resume_checkpoint(job, directory):
 
 class Runtime:
     def preflight(self, job):
+        shared = gpu_sharing_mode(job) == 'SHARED_DESKTOP'
         # Image content hashes are generated from the archived source, never supplied by a job.
         identity = json.loads(Path('/opt/rom-trainer/recipe.json').read_text())
         for key in ('recipeDigest', 'modelDigest', 'dependencyDigest'):
@@ -93,11 +101,23 @@ class Runtime:
         version = lambda value: tuple(int(p) for p in value.split('.'))
         require(version(driver) >= version(job['limits']['driverFloor']), 'MANAGED_DRIVER_UNSUPPORTED')
         memory = 'bootstrapGpuMemoryBytes' if job['kind'] == 'COMMISSION' else 'normalGpuMemoryBytes'
-        require(int(free) * (1 << 20) >= int(job['limits'][memory]), 'MANAGED_GPU_MEMORY_INSUFFICIENT')
+        free_bytes = int(free) * (1 << 20) if re.fullmatch(r'[0-9]+', free) else 0
+        reserve = 2 << 30 if shared else 0
+        require(free_bytes >= int(job['limits'][memory]) + reserve, 'MANAGED_GPU_MEMORY_INSUFFICIENT')
         require(shutil.disk_usage('/var/lib/rom-trainer').free >= max(10 << 30, int(job['limits']['diskBytes'])), 'MANAGED_DISK_INSUFFICIENT')
         import xml.etree.ElementTree as ET
         processes = subprocess.check_output(['nvidia-smi', '-q', '-x', '-i', gpu], text=True, timeout=5)
-        require(not ET.fromstring(processes).findall('.//process_info'), 'MANAGED_GPU_IN_USE')
+        inventory = ET.fromstring(processes)
+        entries = inventory.findall('.//process_info')
+        if shared:
+            observations = inventory.findall('./gpu/processes')
+            require(len(observations) == 1 and not (observations[0].text or '').strip(), 'MANAGED_GPU_IN_USE')
+            # Host executable names are unavailable in the utility container's PID namespace.
+            require(all(len(entry.findall('type')) == 1 and
+                        (entry.findtext('type') or '').strip() in ('G', 'C+G')
+                        for entry in entries), 'MANAGED_GPU_IN_USE')
+        else:
+            require(not entries, 'MANAGED_GPU_IN_USE')
         import torch
         import warp as wp
         require(torch.cuda.is_available() and torch.cuda.device_count() == 1, 'MANAGED_CUDA_REQUIRED')
