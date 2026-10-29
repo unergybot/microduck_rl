@@ -172,11 +172,33 @@ class Runtime:
             stopped.set(); sampler.join(timeout=1); env.close()
 
 
+def publish_result_bundle(job, directory, result, publisher=None, source_commit=None):
+    """Packaging failure does not rewrite an already proven training/export outcome."""
+    if result.get('exportState') != 'SUCCEEDED':
+        return
+    try:
+        if publisher is None:
+            from mjlab_microduck.rom.managed_bundle import publish_bundle
+            publisher = publish_bundle
+        source_commit = source_commit or Path('/opt/rom-trainer/source-revision.txt').read_text().strip()
+        checkpoints = [a for a in result['artifacts'] if a['kind'] == 'CHECKPOINT']
+        pins = dict(modelDigest=job['limits']['modelDigest'], recipeDigest=job['limits']['recipeDigest'],
+                    configDigest=job['requestDigest'], sourceCommit=source_commit)
+        if checkpoints: pins['checkpointSha256'] = checkpoints[0]['sha256']
+        bundle = publisher(directory / 'policy.onnx', directory / 'policy.zip', pins)
+        result['artifacts'].append(bundle)
+        result['publicationState'] = 'LOCAL_READY'
+    except Exception:
+        result['publicationState'] = 'FAILED'
+        result['detailCode'] = 'MANAGED_BUNDLE_FAILED'
+
+
 def run_managed(request_path, runtime=None):
     request_path = Path(request_path); directory = request_path.parent
     try:
         job = json.loads(request_path.read_text()); validate_request(job)
         result = (runtime or Runtime()).execute(job, directory)
+        publish_result_bundle(job, directory, result)
     except Exception as error:
         checkpoint = directory / 'checkpoint.json'
         code = str(error) if isinstance(error, ValueError) and re.fullmatch(r'MANAGED_[A-Z_]{1,55}', str(error)) else 'MANAGED_TRAINING_FAILED'

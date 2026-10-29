@@ -67,3 +67,20 @@ def test_completed_training_survives_export_failure(tmp_path):
     assert result['executionState']=='SUCCEEDED'
     assert result['exportState']=='FAILED'
     assert result['detailCode']=='MANAGED_EXPORT_FAILED'
+
+
+def test_bundle_publication_failure_preserves_successful_export(tmp_path):
+    value=job();value['requestDigest']='sha256:'+'b'*64
+    result={'success':True,'executionState':'SUCCEEDED','exportState':'SUCCEEDED','artifacts':[{'artifactId':'policy.onnx','kind':'ONNX'}]}
+    value['limits'].update(modelDigest='sha256:'+'c'*64,recipeDigest='sha256:'+'d'*64)
+    calls=[]
+    def fail(*args):
+        calls.append(args)
+        raise OSError('private storage error')
+    managed.publish_result_bundle(value,tmp_path,result,publisher=fail,source_commit='a'*40)
+    assert result['executionState']=='SUCCEEDED'
+    assert result['exportState']=='SUCCEEDED'
+    assert len(calls)==1
+    assert result['publicationState']=='FAILED'
+    assert result['detailCode']=='MANAGED_BUNDLE_FAILED'
+    assert result['artifacts'][0]['kind']=='ONNX'
