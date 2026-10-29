@@ -217,3 +217,50 @@ def test_shared_preflight_preserves_gpu_and_recipe_identity(preflight_host, muta
     if mutation in host: host[mutation] = 'changed'
     else: value['limits'][mutation] = ['7.5'] if mutation == 'computeCapabilities' else 'changed'
     with pytest.raises(ValueError, match=code): managed.Runtime().preflight(value)
+
+
+def test_pascal_uses_pinned_scalar_tile_backend_and_legacy_context_alias(monkeypatch):
+    context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
+    monkeypatch.setitem(sys.modules, 'warp._src.context', context)
+    warp = SimpleNamespace(__version__='1.14.0', config=SimpleNamespace(
+        enable_mathdx_gemm=True, enable_mathdx_solver=True, use_precompiled_headers=True))
+    managed.configure_warp_runtime(warp, '6.1')
+    assert warp.config.enable_mathdx_gemm is False
+    assert warp.config.enable_mathdx_solver is False
+    assert warp.config.use_precompiled_headers is False
+    assert warp.context is context
+
+
+@pytest.mark.parametrize('version', ['1.12.0', '1.13.0', '1.18.0', '1.14.0+unknown'])
+def test_pascal_rejects_unqualified_warp_versions(version):
+    warp = SimpleNamespace(__version__=version, config=SimpleNamespace(
+        enable_mathdx_gemm=True, enable_mathdx_solver=True))
+    with pytest.raises(ValueError, match='MANAGED_PASCAL_RUNTIME_UNSUPPORTED'):
+        managed.configure_warp_runtime(warp, '6.1')
+    assert warp.config.enable_mathdx_gemm is True
+
+
+def test_other_gpu_runtime_configuration_is_preserved():
+    warp = SimpleNamespace(config=SimpleNamespace(enable_mathdx_gemm=True))
+    managed.configure_warp_runtime(warp, '8.6')
+    assert warp.config.enable_mathdx_gemm is True
+    assert not hasattr(warp, 'context')
+
+
+def test_pascal_preflight_configures_scalar_backend_before_warp_initialization(preflight_host, monkeypatch):
+    value, _ = preflight_host
+    value['limits']['computeCapabilities'] = ['6.1']
+    sys.modules['torch'].cuda.get_device_capability = lambda index: (6, 1)
+    warp = sys.modules['warp']
+    warp.__version__ = '1.14.0'
+    warp.config = SimpleNamespace(enable_mathdx_gemm=True, enable_mathdx_solver=True,
+                                  use_precompiled_headers=True)
+    context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
+    monkeypatch.setitem(sys.modules, 'warp._src.context', context)
+    def initialize():
+        assert warp.config.enable_mathdx_gemm is False
+        assert warp.config.enable_mathdx_solver is False
+        assert warp.config.use_precompiled_headers is False
+        assert warp.context is context
+    warp.init = initialize
+    assert managed.Runtime().preflight(value)['computeCapability'] == '6.1'

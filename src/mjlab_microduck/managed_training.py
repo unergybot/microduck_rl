@@ -86,6 +86,26 @@ def resume_checkpoint(job, directory):
     return path
 
 
+def configure_warp_runtime(wp, capability):
+    """Select the qualified Pascal tile backend without changing simulation physics."""
+    if capability != '6.1':
+        return
+    require(getattr(wp, '__version__', '') == '1.14.0'
+            and hasattr(wp.config, 'enable_mathdx_gemm')
+            and hasattr(wp.config, 'enable_mathdx_solver'),
+            'MANAGED_PASCAL_RUNTIME_UNSUPPORTED')
+    # MathDx's tiled solver requires sm_70+. Warp 1.14 supplies scalar GPU
+    # implementations of the same operations for the pinned Pascal profile.
+    wp.config.enable_mathdx_gemm = False
+    wp.config.enable_mathdx_solver = False
+    # Keep compilation within the managed container's bounded /tmp tmpfs.
+    wp.config.use_precompiled_headers = False
+    if not hasattr(wp, 'context'):
+        # mjlab 1.3 reads this module's driver version; Warp 1.14 moved it.
+        from importlib import import_module
+        wp.context = import_module('warp._src.context')
+
+
 class Runtime:
     def preflight(self, job):
         shared = gpu_sharing_mode(job) == 'SHARED_DESKTOP'
@@ -123,6 +143,7 @@ class Runtime:
         require(torch.cuda.is_available() and torch.cuda.device_count() == 1, 'MANAGED_CUDA_REQUIRED')
         capability = '.'.join(map(str, torch.cuda.get_device_capability(0)))
         require(capability in job['limits']['computeCapabilities'], 'MANAGED_GPU_UNQUALIFIED')
+        configure_warp_runtime(wp, capability)
         tensor = torch.arange(8, device='cuda:0', dtype=torch.float32)
         require(torch.equal(tensor * 2, torch.arange(8, device='cuda:0', dtype=torch.float32) * 2), 'MANAGED_CUDA_FAILED')
         wp.init(); require(torch.equal(wp.to_torch(wp.from_torch(tensor)), tensor), 'MANAGED_WARP_INTEROP_FAILED')
