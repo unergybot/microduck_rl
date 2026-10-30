@@ -18,7 +18,7 @@ def require(condition, code):
 
 def gpu_sharing_mode(job):
     mode = job['scope'].get('gpuSharingMode', '')
-    require(mode in ('', 'EXCLUSIVE', 'SHARED_DESKTOP'), 'MANAGED_GPU_SHARING_MODE_INVALID')
+    require(mode in ('', 'EXCLUSIVE', 'SHARED_DESKTOP', 'SHARED_WORKLOADS'), 'MANAGED_GPU_SHARING_MODE_INVALID')
     return mode or 'EXCLUSIVE'
 
 
@@ -27,7 +27,7 @@ def validate_request(job):
                'parentJobId', 'checkpointSha256', 'idempotencyKey', 'limits'}
     require(set(job) <= allowed and job.get('scope', {}).get('environment') == 'SIMULATOR', 'MANAGED_SIMULATOR_REQUIRED')
     require(job.get('kind') in ('COMMISSION', 'TRAIN') and re.fullmatch(r'[-A-Za-z0-9_]{1,80}', job.get('jobId', '')), 'MANAGED_RECIPE_INVALID')
-    require(gpu_sharing_mode(job) != 'SHARED_DESKTOP' or job['kind'] == 'COMMISSION', 'MANAGED_SHARED_COMMISSION_REQUIRED')
+    require(gpu_sharing_mode(job) in ('', 'EXCLUSIVE') or job['kind'] == 'COMMISSION', 'MANAGED_SHARED_COMMISSION_REQUIRED')
     require(all(type(job.get(k)) is int for k in ('numEnvs', 'iterations', 'seed', 'timeoutSeconds')), 'MANAGED_PARAMETERS_INVALID')
     require(1 <= job['numEnvs'] <= 4096 and 1 <= job['iterations'] <= 20000 and 0 <= job['seed'] <= 2147483647 and 1 <= job['timeoutSeconds'] <= 43200, 'MANAGED_PARAMETERS_INVALID')
     if job['kind'] == 'COMMISSION':
@@ -108,7 +108,8 @@ def configure_warp_runtime(wp, capability):
 
 class Runtime:
     def preflight(self, job):
-        shared = gpu_sharing_mode(job) == 'SHARED_DESKTOP'
+        mode = gpu_sharing_mode(job)
+        shared = mode in ('SHARED_DESKTOP', 'SHARED_WORKLOADS')
         # Image content hashes are generated from the archived source, never supplied by a job.
         identity = json.loads(Path('/opt/rom-trainer/recipe.json').read_text())
         for key in ('recipeDigest', 'modelDigest', 'dependencyDigest'):
@@ -134,7 +135,7 @@ class Runtime:
             require(len(observations) == 1 and not (observations[0].text or '').strip(), 'MANAGED_GPU_IN_USE')
             # Host executable names are unavailable in the utility container's PID namespace.
             require(all(len(entry.findall('type')) == 1 and
-                        (entry.findtext('type') or '').strip() in ('G', 'C+G')
+                        (entry.findtext('type') or '').strip() in (('G', 'C+G', 'C') if mode == 'SHARED_WORKLOADS' else ('G', 'C+G'))
                         for entry in entries), 'MANAGED_GPU_IN_USE')
         else:
             require(not entries, 'MANAGED_GPU_IN_USE')

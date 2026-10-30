@@ -88,7 +88,7 @@ def test_bundle_publication_failure_preserves_successful_export(tmp_path):
     assert result['artifacts'][0]['kind']=='ONNX'
 
 
-@pytest.mark.parametrize('mode', ['', 'EXCLUSIVE', 'SHARED_DESKTOP'])
+@pytest.mark.parametrize('mode', ['', 'EXCLUSIVE', 'SHARED_DESKTOP', 'SHARED_WORKLOADS'])
 def test_commission_accepts_supported_sharing_modes_without_rewriting_scope(mode):
     value = job(); value['scope']['gpuSharingMode'] = mode
     original = json.loads(json.dumps(value))
@@ -264,3 +264,24 @@ def test_pascal_preflight_configures_scalar_backend_before_warp_initialization(p
         assert warp.context is context
     warp.init = initialize
     assert managed.Runtime().preflight(value)['computeCapability'] == '6.1'
+
+@pytest.mark.parametrize('types', [('C',), ('G','C'), ('G','C+G'), ()])
+def test_workload_preflight_allows_known_compute_without_changing_identity(preflight_host, types):
+    value, host=preflight_host;value['scope']['gpuSharingMode']='SHARED_WORKLOADS'
+    host['processes']='<nvidia_smi_log><gpu><processes>'+''.join('<process_info><type>'+kind+'</type></process_info>' for kind in types)+'</processes></gpu></nvidia_smi_log>'
+    assert managed.Runtime().preflight(value)['gpuUuid']==value['scope']['gpuUuid']
+
+@pytest.mark.parametrize('inventory', ['<nvidia_smi_log/>','<nvidia_smi_log><gpu><processes>N/A</processes></gpu></nvidia_smi_log>', '<nvidia_smi_log><gpu><processes><process_info><type>UNKNOWN</type></process_info></processes></gpu></nvidia_smi_log>'])
+def test_workload_preflight_still_rejects_unknown_process_inventory(preflight_host, inventory):
+    value,host=preflight_host;value['scope']['gpuSharingMode']='SHARED_WORKLOADS';host['processes']=inventory
+    with pytest.raises(ValueError,match='MANAGED_GPU_IN_USE'):managed.Runtime().preflight(value)
+
+@pytest.mark.parametrize('free', ['10239','N/A','0'])
+def test_workload_preflight_retains_shared_memory_reserve(preflight_host, free):
+    value,host=preflight_host;value['scope']['gpuSharingMode']='SHARED_WORKLOADS';host['free']=free
+    with pytest.raises(ValueError,match='MANAGED_GPU_MEMORY_INSUFFICIENT'):managed.Runtime().preflight(value)
+
+def test_workload_sharing_never_enables_normal_training():
+    value=job();value['scope']['gpuSharingMode']='SHARED_WORKLOADS';value['kind']='TRAIN'
+    value['limits'].update(normalEnabled=True,maxEnvs=4096,maxIterations=20000)
+    with pytest.raises(ValueError,match='MANAGED_SHARED_COMMISSION_REQUIRED'):managed.validate_request(value)
