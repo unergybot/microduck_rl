@@ -247,7 +247,7 @@ def test_other_gpu_runtime_configuration_is_preserved():
     assert not hasattr(warp, 'context')
 
 
-def test_ampere_pinned_warp_exposes_mjlab_driver_context_without_scalar_fallback(monkeypatch):
+def test_ampere_pinned_warp_exposes_context_and_bounds_compilation_without_scalar_fallback(monkeypatch):
     context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
     monkeypatch.setitem(sys.modules, 'warp._src.context', context)
     warp = SimpleNamespace(__version__='1.14.0', config=SimpleNamespace(
@@ -256,12 +256,13 @@ def test_ampere_pinned_warp_exposes_mjlab_driver_context_without_scalar_fallback
     assert warp.context.runtime.driver_version == (13, 0)
     assert warp.config.enable_mathdx_gemm is True
     assert warp.config.enable_mathdx_solver is True
-    assert warp.config.use_precompiled_headers is True
+    assert warp.config.use_precompiled_headers is False
 
 
 def test_pinned_warp_preserves_existing_public_context():
     context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
-    warp = SimpleNamespace(__version__='1.14.0', context=context)
+    warp = SimpleNamespace(__version__='1.14.0', context=context,
+                           config=SimpleNamespace(use_precompiled_headers=True))
     managed.configure_warp_runtime(warp, '8.6')
     assert warp.context is context
 
