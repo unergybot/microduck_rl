@@ -87,7 +87,11 @@ def resume_checkpoint(job, directory):
 
 
 def configure_warp_runtime(wp, capability):
-    """Select the qualified Pascal tile backend without changing simulation physics."""
+    """Restore mjlab's pinned Warp API and select Pascal's scalar tile backend."""
+    if getattr(wp, '__version__', '') == '1.14.0' and not hasattr(wp, 'context'):
+        # mjlab 1.3 reads this module's driver version on every CUDA architecture.
+        from importlib import import_module
+        wp.context = import_module('warp._src.context')
     if capability != '6.1':
         return
     require(getattr(wp, '__version__', '') == '1.14.0'
@@ -100,10 +104,6 @@ def configure_warp_runtime(wp, capability):
     wp.config.enable_mathdx_solver = False
     # Keep compilation within the managed container's bounded /tmp tmpfs.
     wp.config.use_precompiled_headers = False
-    if not hasattr(wp, 'context'):
-        # mjlab 1.3 reads this module's driver version; Warp 1.14 moved it.
-        from importlib import import_module
-        wp.context = import_module('warp._src.context')
 
 
 class Runtime:

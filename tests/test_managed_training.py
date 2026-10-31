@@ -247,6 +247,25 @@ def test_other_gpu_runtime_configuration_is_preserved():
     assert not hasattr(warp, 'context')
 
 
+def test_ampere_pinned_warp_exposes_mjlab_driver_context_without_scalar_fallback(monkeypatch):
+    context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
+    monkeypatch.setitem(sys.modules, 'warp._src.context', context)
+    warp = SimpleNamespace(__version__='1.14.0', config=SimpleNamespace(
+        enable_mathdx_gemm=True, enable_mathdx_solver=True, use_precompiled_headers=True))
+    managed.configure_warp_runtime(warp, '8.6')
+    assert warp.context.runtime.driver_version == (13, 0)
+    assert warp.config.enable_mathdx_gemm is True
+    assert warp.config.enable_mathdx_solver is True
+    assert warp.config.use_precompiled_headers is True
+
+
+def test_pinned_warp_preserves_existing_public_context():
+    context = SimpleNamespace(runtime=SimpleNamespace(driver_version=(13, 0)))
+    warp = SimpleNamespace(__version__='1.14.0', context=context)
+    managed.configure_warp_runtime(warp, '8.6')
+    assert warp.context is context
+
+
 def test_pascal_preflight_configures_scalar_backend_before_warp_initialization(preflight_host, monkeypatch):
     value, _ = preflight_host
     value['limits']['computeCapabilities'] = ['6.1']
