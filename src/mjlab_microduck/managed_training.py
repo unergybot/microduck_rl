@@ -180,8 +180,11 @@ class Runtime:
             require(abs(env.step_dt - .02) < 1e-8, 'MANAGED_CONTROL_RATE_INVALID')
             wrapped = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
             runner = (load_runner_cls(task) or MjlabOnPolicyRunner)(wrapped, asdict(agent_cfg), str(work), 'cuda:0')
-            from mjlab_microduck.training_console import observe_runner
-            observe_runner(runner, directory, job)
+            try:
+                from mjlab_microduck.training_console import observe_runner
+                observe_runner(runner, directory, job)
+            except Exception:  # Optional observations must not change accepted jobs or PPO.
+                pass
             checkpoint = resume_checkpoint(job, directory)
             if checkpoint: runner.load(str(checkpoint), map_location='cuda:0')
             save = runner.save

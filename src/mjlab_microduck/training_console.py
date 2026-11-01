@@ -45,9 +45,14 @@ class Collector:
             # Trim all histories proportionally in one pass; repeatedly encoding
             # the longest series would stall a fully populated 64-series logger.
             ratio = MAX_BYTES / len(data) * .95
+            if not any(metric['points'] for metric in body['metrics']):
+                raise ValueError('console metadata exceeds diagnostic budget')
             for metric in body['metrics']:
-                keep = max(1, int(len(metric['points']) * ratio))
-                metric['points'] = metric['points'][-keep:]
+                # Halving guarantees progress even for one point. At most 12
+                # encodings for the bounded 2000-point histories, then reject
+                # metadata that cannot fit without changing job identity.
+                keep = min(len(metric['points']) // 2, int(len(metric['points']) * ratio))
+                metric['points'] = metric['points'][-keep:] if keep else []
         self.directory.mkdir(mode=0o700, exist_ok=True)
         info = self.directory.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
@@ -74,6 +79,12 @@ def observe_runner(runner, directory, job):
 
     def init_writer(*args, **kwargs):
         result = initialize(*args, **kwargs)
+        try:
+            attach_writer()
+        except Exception: pass  # noqa: BLE001, S110 - optional writer interception
+        return result
+
+    def attach_writer():
         if logger.writer is not None:
             add = logger.writer.add_scalar
             def scalar(tag, value, global_step=None, *args, **kwargs):
@@ -82,7 +93,6 @@ def observe_runner(runner, directory, job):
                 except Exception: pass  # noqa: BLE001, S110 - diagnostics cannot change runner semantics
                 return result
             logger.writer.add_scalar = scalar
-        return result
 
     def observed_log(*args, **kwargs):
         result = log(*args, **kwargs)

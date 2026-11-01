@@ -80,3 +80,33 @@ def test_serialized_observations_fit_snapshot_budget_at_maximum_series(tmp_path)
     assert (tmp_path/'console/metrics.json').stat().st_size <= 2 << 20
     assert len(body['metrics'])==64
     assert all(0 < len(series['points']) <= 2000 for series in body['metrics'])
+
+
+@pytest.mark.parametrize('points', [0, 1, 2])
+def test_oversize_metadata_terminates_without_publishing(tmp_path, points):
+    import subprocess
+    import sys
+    script = '''
+import importlib.util
+from pathlib import Path
+import sys
+spec = importlib.util.spec_from_file_location('console', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+collector = module.Collector(sys.argv[2], {'jobId': 'x' * (module.MAX_BYTES + 1), 'requestDigest': 'sha256:' + 'a' * 64})
+for step in range(int(sys.argv[3])): collector.scalar('reward', 1, step)
+try: collector.flush({})
+except ValueError: pass
+assert not (Path(sys.argv[2]) / 'console/metrics.json').exists()
+'''
+    subprocess.run([sys.executable, '-c', script, str(Path(spec.origin)), str(tmp_path), str(points)],
+                   timeout=3, check=True, capture_output=True)
+
+
+def test_writer_hook_setup_failure_preserves_original_return(tmp_path):
+    module = console()
+    class Writer:
+        @property
+        def add_scalar(self): raise OSError('optional writer interception unavailable')
+    logger = SimpleNamespace(writer=Writer(), init_logging_writer=lambda: 17, log=lambda: 23)
+    module.observe_runner(SimpleNamespace(logger=logger), tmp_path, {'jobId': 'job-a', 'requestDigest': 'sha256:' + 'a'*64})
+    assert logger.init_logging_writer() == 17

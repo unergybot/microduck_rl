@@ -305,3 +305,62 @@ def test_workload_sharing_never_enables_normal_training():
     value=job();value['scope']['gpuSharingMode']='SHARED_WORKLOADS';value['kind']='TRAIN'
     value['limits'].update(normalEnabled=True,maxEnvs=4096,maxIterations=20000)
     with pytest.raises(ValueError,match='MANAGED_SHARED_COMMISSION_REQUIRED'):managed.validate_request(value)
+
+
+@pytest.mark.parametrize('diagnostics', ['missing_digest', 'import_failure', 'setup_failure'])
+@pytest.mark.parametrize('learn_fails', [False, True])
+def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tmp_path, monkeypatch, diagnostics, learn_fails):
+    import builtins
+    from dataclasses import dataclass
+    from types import ModuleType
+    events = []
+    value = job()
+    if diagnostics != 'missing_digest': value['requestDigest'] = 'sha256:' + 'a' * 64
+    @dataclass
+    class AgentConfig:
+        clip_actions: float = 1.
+    class Runner:
+        logger = SimpleNamespace(init_logging_writer=lambda: None, log=lambda: None)
+        def save(self, path, infos=None): Path(path).write_bytes(b'checkpoint')
+        def learn(self, **kwargs):
+            events.append('learn')
+            if learn_fails: raise RuntimeError('authoritative learn failure')
+        def export_policy_to_onnx(self, *args):
+            events.append('export')
+            raise RuntimeError('export reached')
+    runner = Runner()
+    env = SimpleNamespace(step_dt=.02, close=lambda: events.append('close'))
+    modules = {
+        'mjlab': {}, 'mjlab.tasks': {},
+        'mjlab.envs': {'ManagerBasedRlEnv': lambda **kw: env},
+        'mjlab.rl': {'MjlabOnPolicyRunner': lambda *a: runner, 'RslRlVecEnvWrapper': lambda *a, **kw: env},
+        'mjlab.tasks.registry': {'load_env_cfg': lambda task: SimpleNamespace(scene=SimpleNamespace()),
+                                'load_rl_cfg': lambda task: AgentConfig(), 'load_runner_cls': lambda task: None},
+        'mjlab.utils.torch': {'configure_torch_backends': lambda: None},
+        'mjlab.rl.exporter_utils': {'attach_metadata_to_onnx': lambda *a: None, 'get_base_metadata': lambda *a: {}},
+        'mjlab_microduck.rom.export_metadata': {'attach_microduck_metadata': lambda *a: None},
+        'torch': {'cuda': SimpleNamespace(mem_get_info=lambda _: (1, 1))},
+    }
+    for name, attributes in modules.items():
+        module = ModuleType(name); module.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, module)
+    observer_spec = importlib.util.spec_from_file_location('mjlab_microduck.training_console',
+        Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
+    observer = importlib.util.module_from_spec(observer_spec); observer_spec.loader.exec_module(observer)
+    if diagnostics == 'setup_failure':
+        observer.observe_runner = lambda *args: (_ for _ in ()).throw(OSError('optional setup failed'))
+    monkeypatch.setitem(sys.modules, 'mjlab_microduck.training_console', observer)
+    original_import = builtins.__import__
+    def importing(name, *args, **kwargs):
+        if diagnostics == 'import_failure' and name == 'mjlab_microduck.training_console':
+            raise ImportError('optional observer unavailable')
+        return original_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, '__import__', importing)
+    monkeypatch.setattr(managed.Runtime, 'preflight', lambda *a: {})
+    monkeypatch.setattr(managed.shutil, 'disk_usage', lambda _: SimpleNamespace(free=20 << 30))
+    request = tmp_path / 'request.json'; request.write_text(json.dumps(value))
+    assert managed.run_managed(request) == 1
+    assert events == (['learn', 'close'] if learn_fails else ['learn', 'export', 'close'])
+    result = json.loads((tmp_path / 'result.json').read_text())
+    assert result['detailCode'] == ('MANAGED_TRAINING_FAILED' if learn_fails else 'MANAGED_EXPORT_FAILED')
+    assert result['executionState'] == ('FAILED' if learn_fails else 'SUCCEEDED')
