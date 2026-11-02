@@ -1,5 +1,6 @@
 """Fixed simulator-only ROM runner. Invoked inside the pinned, network-isolated trainer image."""
 import hashlib
+import io
 import json
 import os
 import re
@@ -114,7 +115,7 @@ def resume_checkpoint(job, directory):
     return path
 
 
-def select_resume_checkpoint(job, directory, spec=None):
+def select_resume_checkpoint(job, directory, spec=None, *, snapshot=False):
     """Experiments select verified available history; legacy keeps latest-only."""
     if spec is None:
         return resume_checkpoint(job, directory)
@@ -123,9 +124,15 @@ def select_resume_checkpoint(job, directory, spec=None):
     from mjlab_microduck.workbench.checkpoints import trusted_checkpoint
     path, previous = trusted_checkpoint(directory, job, dict(
         jobId=job['parentJobId'], checkpointSha256=job['checkpointSha256'],
-        configDigest=spec['configDigest']))
+        configDigest=spec['configDigest']), snapshot=snapshot)
     require(previous == spec, 'MANAGED_CHECKPOINT_CONFIG_MISMATCH')
-    return path
+    return io.BytesIO(path) if snapshot else path
+
+
+def load_resume_checkpoint(runner, checkpoint, spec=None, *, map_location):
+    """The single Runtime handoff to the upstream state-restoring loader."""
+    if checkpoint:
+        return runner.load(checkpoint if spec is not None else str(checkpoint), map_location=map_location)
 
 
 def configure_warp_runtime(wp, capability):
@@ -249,8 +256,8 @@ class Runtime:
                     from mjlab_microduck.workbench.observer import attach_observer
                     observer = attach_observer(env, directory, job, spec)
                 except Exception: pass
-            checkpoint = select_resume_checkpoint(job, directory, spec)
-            if checkpoint: runner.load(str(checkpoint), map_location='cuda:0')
+            checkpoint = select_resume_checkpoint(job, directory, spec, snapshot=spec is not None)
+            load_resume_checkpoint(runner, checkpoint, spec, map_location='cuda:0')
             save = runner.save
             def managed_save(path, infos=None):
                 require(shutil.disk_usage(directory).free >= 1 << 30, 'MANAGED_DISK_EXHAUSTED')

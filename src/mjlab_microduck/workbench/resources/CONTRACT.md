@@ -154,3 +154,22 @@ For twist, head_pose and body_pose, resampling_time_range is exactly a JSON list
 of two finite numbers (booleans excluded), with 0.1 <= low <= high <= 120 seconds.
 Malformed shapes, reversed intervals and out-of-bound intervals are refused during
 canonical resolution, before an experiment can launch.
+
+Experimental teacher and resume checkpoint reads require an owned regular
+checkpoint-index.json, at most 2 MiB, with the complete producer identity
+(schema/jobId/requestDigest/configDigest), exact retention policy 10/4096 and
+strict available/evicted entry schemas. Job and request identity must equal the
+immutable parent request; configuration must equal its verified experiment and
+the selected reference. Available entries alone authorize a read. Latest pointers
+are never unioned with the index, and missing/invalid indexes have no fallback.
+Digests cannot be duplicated or conflict across either list. All checkpoint IDs
+are derived from the declared SHA256, and selected bytes must match hash and size.
+
+Metadata/checkpoints use owned regular single-link nofollow/nonblocking FD reads,
+131072-byte parent metadata, 2 MiB index and 256 MiB checkpoint ceilings, with
+file/path identity rechecks during verification. Group-writable files are accepted
+only inside the unchanged private owned directory (matching the trainer storage
+boundary); world-writable files are refused. Actual experimental consumers use
+bounded verified byte snapshots: frozen teachers keep weights_only=True, while
+upstream runner resume consumes BytesIO and preserves iteration/curriculum state.
+The public helper's default path return and legacy latest-only behavior remain.
