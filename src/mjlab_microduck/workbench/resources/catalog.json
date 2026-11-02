@@ -1,0 +1,2907 @@
+{
+  "schemaVersion": "ROM_TRAINING_CATALOG_V1",
+  "catalogRevision": "microduck-workbench-v1",
+  "provenance": {
+    "sourceCommit": "d8654a3f913f95c81ed723582e228a60b4062b06",
+    "recipeSource": "mjlab_microduck.tasks registry/config factories",
+    "reference": "Microduck Training Studio R1.5.27 family/variant identities only; independent implementation",
+    "hd1910ServoSource": "reference published task configuration, BAM M6 asset digest; physical asset delivery separate"
+  },
+  "robotProfiles": [
+    {
+      "robotProfileId": "rom-xl330-v1",
+      "servo": {
+        "motorName": "xl330",
+        "model": "m6",
+        "parameterAsset": "bam:xl330/m6.json",
+        "parameterDigest": "sha256:61c699362fb3fabdde93eeba5e1ad3bf4ef9ca2f71d03e316b1924ff005b20d3",
+        "kpFirmware": 200,
+        "voltageRange": [
+          6.5,
+          8.2
+        ],
+        "voltageDropGainRange": [
+          0,
+          0.2
+        ],
+        "voltageMinimum": 6,
+        "delayMinLag": 3,
+        "delayMaxLag": 6
+      }
+    },
+    {
+      "robotProfileId": "hd1910-reference-v1",
+      "servo": {
+        "motorName": "hd1910",
+        "model": "m6",
+        "parameterAsset": "hd1910_m6.json",
+        "parameterDigest": "sha256:ef2d51adfb1cc0831b9b02ca19aa9176fceecdf725148d084378d7d9a64afceb",
+        "kpFirmware": 5,
+        "voltageRange": [
+          7.4,
+          8
+        ],
+        "voltageDropGainRange": [
+          0,
+          0.2
+        ],
+        "voltageMinimum": 7,
+        "delayMinLag": 3,
+        "delayMaxLag": 6
+      }
+    }
+  ],
+  "recipes": [
+    {
+      "recipeId": "Mjlab-VelStand-Flat-MicroDuck",
+      "taskId": "Mjlab-VelStand-Flat-MicroDuck",
+      "actionId": "joint",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "joint-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [
+        "walk",
+        "stand"
+      ],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-VelStand-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-VelStand-Flat-Backlash-MicroDuck",
+      "actionId": "joint",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "joint-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [
+        "walk",
+        "stand"
+      ],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-VelStand-Rough-MicroDuck",
+      "taskId": "Mjlab-VelStand-Rough-MicroDuck",
+      "actionId": "joint",
+      "terrain": "rough",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "joint-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [
+        "walk",
+        "stand"
+      ],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-VelStand-Rough-Backlash-MicroDuck",
+      "taskId": "Mjlab-VelStand-Rough-Backlash-MicroDuck",
+      "actionId": "joint",
+      "terrain": "rough",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "joint-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [
+        "walk",
+        "stand"
+      ],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-SitStand-Flat-MicroDuck",
+      "taskId": "Mjlab-SitStand-Flat-MicroDuck",
+      "actionId": "sitstand",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "sitstand-v1",
+        "twistSemantics": "sit-stand-vx-flag",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 12,
+        "actionScale": 0.8
+      }
+    },
+    {
+      "recipeId": "Mjlab-SitStand-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-SitStand-Flat-Backlash-MicroDuck",
+      "actionId": "sitstand",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "sitstand-v1",
+        "twistSemantics": "sit-stand-vx-flag",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 12,
+        "actionScale": 0.8
+      }
+    },
+    {
+      "recipeId": "Mjlab-SitStand-Rough-MicroDuck",
+      "taskId": "Mjlab-SitStand-Rough-MicroDuck",
+      "actionId": "sitstand",
+      "terrain": "rough",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "sitstand-v1",
+        "twistSemantics": "sit-stand-vx-flag",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 12,
+        "actionScale": 0.8
+      }
+    },
+    {
+      "recipeId": "Mjlab-SitStand-Rough-Backlash-MicroDuck",
+      "taskId": "Mjlab-SitStand-Rough-Backlash-MicroDuck",
+      "actionId": "sitstand",
+      "terrain": "rough",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "sitstand-v1",
+        "twistSemantics": "sit-stand-vx-flag",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 12,
+        "actionScale": 0.8
+      }
+    },
+    {
+      "recipeId": "Mjlab-GroundPick-Flat-MicroDuck",
+      "taskId": "Mjlab-GroundPick-Flat-MicroDuck",
+      "actionId": "ground_pick",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "ground_pick-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-GroundPick-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-GroundPick-Flat-Backlash-MicroDuck",
+      "actionId": "ground_pick",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "ground_pick-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-GroundPick-Rough-MicroDuck",
+      "taskId": "Mjlab-GroundPick-Rough-MicroDuck",
+      "actionId": "ground_pick",
+      "terrain": "rough",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "ground_pick-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-GroundPick-Rough-Backlash-MicroDuck",
+      "taskId": "Mjlab-GroundPick-Rough-Backlash-MicroDuck",
+      "actionId": "ground_pick",
+      "terrain": "rough",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "ground_pick-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 20000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-BallKickLeft-Flat-MicroDuck",
+      "taskId": "Mjlab-BallKick-Flat-MicroDuck",
+      "actionId": "kick_left",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {
+        "kick_foot": "left"
+      },
+      "commandProfile": {
+        "id": "kick_left-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 10000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 5,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-BallKickLeft-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-BallKick-Flat-Backlash-MicroDuck",
+      "actionId": "kick_left",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {
+        "kick_foot": "left"
+      },
+      "commandProfile": {
+        "id": "kick_left-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 10000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 5,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-BallKick-Flat-MicroDuck",
+      "taskId": "Mjlab-BallKick-Flat-MicroDuck",
+      "actionId": "kick_right",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "kick_right-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 10000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 5,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-BallKick-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-BallKick-Flat-Backlash-MicroDuck",
+      "actionId": "kick_right",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "kick_right-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 10000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 5,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Roulade-Flat-MicroDuck",
+      "taskId": "Mjlab-Roulade-Flat-MicroDuck",
+      "actionId": "roulade",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "roulade-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 10000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 5,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Flat-MicroDuck",
+      "taskId": "Mjlab-Velocity-Flat-MicroDuck",
+      "actionId": "walk",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "walk-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-Velocity-Flat-Backlash-MicroDuck",
+      "actionId": "walk",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "walk-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Rough-MicroDuck",
+      "taskId": "Mjlab-Velocity-Rough-MicroDuck",
+      "actionId": "walk",
+      "terrain": "rough",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "walk-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Rough-Backlash-MicroDuck",
+      "taskId": "Mjlab-Velocity-Rough-Backlash-MicroDuck",
+      "actionId": "walk",
+      "terrain": "rough",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "walk-v1",
+        "twistSemantics": "body-velocity",
+        "twistRanges": [
+          [
+            -0.4,
+            0.4
+          ],
+          [
+            -0.3,
+            0.3
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-StandUp-Flat-MicroDuck",
+      "taskId": "Mjlab-StandUp-Flat-MicroDuck",
+      "actionId": "stand",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "stand-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 6,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-StandUp-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-StandUp-Flat-Backlash-MicroDuck",
+      "actionId": "stand",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "stand-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 6,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-StandUp-Rough-MicroDuck",
+      "taskId": "Mjlab-StandUp-Rough-MicroDuck",
+      "actionId": "stand",
+      "terrain": "rough",
+      "backlash": false,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "stand-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 6,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-StandUp-Rough-Backlash-MicroDuck",
+      "taskId": "Mjlab-StandUp-Rough-Backlash-MicroDuck",
+      "actionId": "stand",
+      "terrain": "rough",
+      "backlash": true,
+      "hardware": "feet",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "stand-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.005,
+            0.005
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 6,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Flat-MicroDuck-Rollers",
+      "taskId": "Mjlab-Velocity-Flat-MicroDuck-Rollers",
+      "actionId": "roller",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "roller-v1",
+        "twistSemantics": "propulsion-brake-heading-error",
+        "twistRanges": [
+          [
+            -0.5,
+            0.6
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Flat-Backlash-MicroDuck-Rollers",
+      "taskId": "Mjlab-Velocity-Flat-Backlash-MicroDuck-Rollers",
+      "actionId": "roller",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "roller-v1",
+        "twistSemantics": "propulsion-brake-heading-error",
+        "twistRanges": [
+          [
+            -0.5,
+            0.6
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-RollerCrouch-Flat-MicroDuck",
+      "taskId": "Mjlab-RollerCrouch-Flat-MicroDuck",
+      "actionId": "crouch",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "crouch-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 8000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-RollerCrouch-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-RollerCrouch-Flat-Backlash-MicroDuck",
+      "actionId": "crouch",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "crouch-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 8000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Swizzle-MicroDuck",
+      "taskId": "Mjlab-Velocity-Swizzle-MicroDuck",
+      "actionId": "swizzle",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "swizzle-v1",
+        "twistSemantics": "bidirectional-propulsion-heading-error",
+        "twistRanges": [
+          [
+            -0.6,
+            0.6
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Velocity-Swizzle-Backlash-MicroDuck",
+      "taskId": "Mjlab-Velocity-Swizzle-Backlash-MicroDuck",
+      "actionId": "swizzle",
+      "terrain": "flat",
+      "backlash": true,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "swizzle-v1",
+        "twistSemantics": "bidirectional-propulsion-heading-error",
+        "twistRanges": [
+          [
+            -0.6,
+            0.6
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.05,
+            0.05
+          ],
+          [
+            -0.07,
+            0.07
+          ],
+          [
+            -0.015,
+            0.015
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 50000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-RollerSlope-Flat-MicroDuck",
+      "taskId": "Mjlab-RollerSlope-Flat-MicroDuck",
+      "actionId": "slope",
+      "terrain": "slope",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "slope-v1",
+        "twistSemantics": "passive-balance",
+        "twistRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 8000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-RollerSlope-Flat-Backlash-MicroDuck",
+      "taskId": "Mjlab-RollerSlope-Flat-Backlash-MicroDuck",
+      "actionId": "slope",
+      "terrain": "slope",
+      "backlash": true,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "slope-v1",
+        "twistSemantics": "passive-balance",
+        "twistRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 8000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-RollerStandUp-Flat-MicroDuck",
+      "taskId": "Mjlab-RollerStandUp-Flat-MicroDuck",
+      "actionId": "roller_stand",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "roller_stand-v1",
+        "twistSemantics": "autonomous-maneuver",
+        "twistRanges": [
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.01,
+            0.01
+          ],
+          [
+            -0.05,
+            0.05
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 15000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 6,
+        "actionScale": 1
+      }
+    },
+    {
+      "recipeId": "Mjlab-Spin-Flat-MicroDuck",
+      "taskId": "Mjlab-Spin-Flat-MicroDuck",
+      "actionId": "spin",
+      "terrain": "flat",
+      "backlash": false,
+      "hardware": "rollers",
+      "factoryOverrides": {},
+      "commandProfile": {
+        "id": "spin-v1",
+        "twistSemantics": "phase-clock",
+        "twistRanges": [
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ],
+        "headPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "bodyPoseRanges": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "teacherActionIds": [],
+      "defaults": {
+        "numEnvs": 1,
+        "iterations": 8000,
+        "seed": 42,
+        "numStepsPerEnv": 24,
+        "learningRate": 0.001,
+        "episodeLengthSeconds": 20,
+        "actionScale": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "ROM_TRAINING_EXPERIMENT_V1",
+  "catalogRevision": "microduck-workbench-v1",
+  "recipeId": "Mjlab-Velocity-Flat-MicroDuck",
+  "taskId": "Mjlab-Velocity-Flat-MicroDuck",
+  "actionId": "walk",
+  "terrain": "flat",
+  "backlash": false,
+  "factoryOverrides": {},
+  "commandProfile": {
+    "id": "walk-v1",
+    "twistSemantics": "body-velocity",
+    "twistRanges": [
+      [
+        -0.4,
+        0.4
+      ],
+      [
+        -0.3,
+        0.3
+      ],
+      [
+        -1,
+        1
+      ]
+    ],
+    "headPoseRanges": [
+      [
+        -0.05,
+        0.05
+      ],
+      [
+        -0.05,
+        0.05
+      ],
+      [
+        -0.07,
+        0.07
+      ],
+      [
+        -0.015,
+        0.015
+      ]
+    ],
+    "bodyPoseRanges": [
+      [
+        -0.005,
+        0.005
+      ],
+      [
+        -0.005,
+        0.005
+      ],
+      [
+        -0.005,
+        0.005
+      ],
+      [
+        -0.05,
+        0.05
+      ],
+      [
+        -0.05,
+        0.05
+      ],
+      [
+        -0.05,
+        0.05
+      ]
+    ]
+  },
+  "robotProfileId": "rom-xl330-v1",
+  "teacherRequirements": [],
+  "requestedConfig": {
+    "iterations": 5,
+    "numEnvs": 64,
+    "seed": 7
+  },
+  "effectiveConfig": {
+    "numEnvs": 64,
+    "iterations": 5,
+    "seed": 7,
+    "numStepsPerEnv": 24,
+    "learningRate": 0.001,
+    "episodeLengthSeconds": 20,
+    "actionScale": 1,
+    "servo": {
+      "motorName": "xl330",
+      "model": "m6",
+      "parameterAsset": "bam:xl330/m6.json",
+      "parameterDigest": "sha256:61c699362fb3fabdde93eeba5e1ad3bf4ef9ca2f71d03e316b1924ff005b20d3",
+      "kpFirmware": 200,
+      "voltageRange": [
+        6.5,
+        8.2
+      ],
+      "voltageDropGainRange": [
+        0,
+        0.2
+      ],
+      "voltageMinimum": 6,
+      "delayMinLag": 3,
+      "delayMaxLag": 6
+    },
+    "actionFilter": "NONE",
+    "controlFrequencyHz": 50,
+    "normalizeObservations": true
+  },
+  "recipeDigest": "sha256:fb3dafcec16b35764d58fdf069605c3cd5f0316490ebee58b48efa013fb106a4",
+  "configDigest": "sha256:8c562ba28830e1c40c08f7f16d2e553113e0780c8b211f3f82f5cec24aa365be"
+}

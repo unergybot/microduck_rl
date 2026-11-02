@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "ROM_TRAINING_EXPERIMENT_V1",
+  "recipeId": "Mjlab-Velocity-Flat-MicroDuck",
+  "robotProfileId": "rom-xl330-v1",
+  "config": {
+    "numEnvs": 64,
+    "iterations": 5,
+    "seed": 7
+  }
+}
