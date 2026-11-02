@@ -67,6 +67,47 @@ def verify_image_experiment(identity, spec):
     require(spec['recipeDigest'] in descriptor['recipeDigests'] and spec['robotProfileId'] in descriptor['robotProfileIds'], 'MANAGED_EXPERIMENT_IMAGE_UNSUPPORTED')
 
 
+
+def observer_version(release):
+    """Resolve optional observer solely from exact installed image-owned proof.
+
+    Invalid V2 proof disables diagnostics; it never rejects normal training or
+    silently falls back to V1. No job, environment variable or caller path enters
+    this lookup. Resource/read failures also disable the optional observer.
+    """
+    from importlib.resources import files
+
+    if not isinstance(release, dict):
+        return 0
+    if 'trainingWorkbenchReadV2' not in release:
+        return 1
+    paths = (
+        'workbench/observer.py', 'workbench/geometry.py', 'workbench/checkpoints.py',
+        'workbench/engine.py', 'workbench/resources/request.schema.json',
+        'managed_training.py', 'rom/viewer.py',
+    )
+    channels = ['OBSERVER_FRAME', 'MODEL_GEOMETRY', 'CHECKPOINT_INDEX',
+                'ENGINE_CONFIGURATION', 'EXPERIMENT_ARCHIVE']
+    try:
+        descriptor = release['trainingWorkbenchReadV2']
+        if ('trainingWorkbenchReadV1' in release or type(descriptor) is not dict
+                or set(descriptor) != {'schemaVersion', 'channels', 'producerSha256'}
+                or descriptor['schemaVersion'] != 'ROM_TRAINING_WORKBENCH_READ_CAPABILITY_V2'
+                or descriptor['channels'] != channels):
+            return 0
+        proof = descriptor['producerSha256']
+        if type(proof) is not dict or set(proof) != set(paths):
+            return 0
+        package = files('mjlab_microduck')
+        for path in paths:
+            digest = proof[path]
+            if (type(digest) is not str or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest)
+                    or digest != 'sha256:' + hashlib.sha256(package.joinpath(path).read_bytes()).hexdigest()):
+                return 0
+        return 2
+    except Exception:  # noqa: BLE001 -- Invalid optional proof must not reject training.
+        return 0
+
 def atomic_json(path, value):
     path = Path(path); temporary = path.with_suffix('.tmp')
     with temporary.open('w') as stream:
@@ -162,6 +203,7 @@ class Runtime:
         shared = mode in ('SHARED_DESKTOP', 'SHARED_WORKLOADS')
         # Image content hashes are generated from the archived source, never supplied by a job.
         identity = json.loads(Path('/opt/rom-trainer/recipe.json').read_text())
+        self._observer_version = observer_version(identity)
         for key in ('recipeDigest', 'modelDigest', 'dependencyDigest'):
             require(identity[key] == job['limits'][key], 'MANAGED_RECIPE_MISMATCH')
         spec = experiment(job)
@@ -254,7 +296,9 @@ class Runtime:
                     attach_teachers(runner, teachers)
                 try:
                     from mjlab_microduck.workbench.observer import attach_observer
-                    observer = attach_observer(env, directory, job, spec)
+                    version = getattr(self, '_observer_version', 1)
+                    if version:
+                        observer = attach_observer(env, directory, job, spec, version=version)
                 except Exception: pass
             checkpoint = select_resume_checkpoint(job, directory, spec, snapshot=spec is not None)
             load_resume_checkpoint(runner, checkpoint, spec, map_location='cuda:0')

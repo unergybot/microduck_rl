@@ -1,4 +1,4 @@
-"""Private, unused bounded projection of a compiled MuJoCo scene.
+"""Private bounded projection of a compiled MuJoCo scene.
 
 Display IDs are dense slots, NOT MuJoCo geom IDs. This payload needs new V2
 consumers: existing observer/evaluation/viewer wire formats are unchanged.
@@ -133,7 +133,6 @@ class GeometryProjection:
             4 * ((count * slots * 12 * 4 + 2) // 3) + 4096 <= MAX_FRAME_BYTES,
             "FRAME_BUDGET",
         )
-        dynamic_slots = [s for s, _ in self.dynamic_mapping]
         sources = [g for _, g in self.dynamic_mapping]
         if isinstance(positions, np.ndarray):
             _require(
@@ -184,8 +183,52 @@ class GeometryProjection:
                 .to(device="cpu", dtype=torch.float32)
                 .numpy()
             )
-        _finite(selected_p, "NONFINITE_POSE")
-        _finite(selected_m, "NONFINITE_POSE")
+        return self.pack_selected(
+            selected_p, selected_m, environment_indices=environment_indices,
+            environment_count=positions.shape[0],
+        )
+
+    def pack_selected(self, positions, matrices, *, environment_indices, environment_count):
+        """Pack already gathered, completed CPU buffers in dynamic_mapping order.
+
+        Trusted callers must gather actual source/env indices before transfer and
+        complete asynchronous copies before calling. This helper never transfers
+        from a GPU or reconstructs full-source arrays. Constants remain immutable.
+        """
+        _require(
+            type(environment_count) is int and environment_count > 0
+            and isinstance(environment_indices, (list, tuple))
+            and 1 <= len(environment_indices) <= 9
+            and all(type(i) is int and 0 <= i < environment_count for i in environment_indices)
+            and len(set(environment_indices)) == len(environment_indices),
+            "ENVIRONMENT_INDICES",
+        )
+        count = len(environment_indices)
+        slots = len(self._positions)
+        _require(
+            4 * ((count * slots * 12 * 4 + 2) // 3) + 4096 <= MAX_FRAME_BYTES,
+            "FRAME_BUDGET",
+        )
+        dynamic_slots = [s for s, _ in self.dynamic_mapping]
+        _require(
+            tuple(positions.shape) == (count, len(dynamic_slots), 3)
+            and tuple(matrices.shape) == (count, len(dynamic_slots), 3, 3),
+            "POSE_SHAPE",
+        )
+        selected = []
+        for value in (positions, matrices):
+            if isinstance(value, np.ndarray):
+                _require(value.dtype.kind == "f", "POSE_TYPE")
+            else:
+                import torch
+
+                _require(
+                    isinstance(value, torch.Tensor) and value.device.type == "cpu"
+                    and value.is_floating_point(), "POSE_TYPE",
+                )
+                value = value.detach().to(dtype=torch.float32).numpy()
+            selected.append(_finite(value, "NONFINITE_POSE"))
+        selected_p, selected_m = selected
         out_p = np.broadcast_to(
             np.asarray(self._positions, dtype="<f4"), (count, slots, 3)
         ).copy()

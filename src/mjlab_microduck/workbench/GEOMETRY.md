@@ -1,9 +1,9 @@
 # Private compiled-scene projection foundation
 
-`geometry.py` is deliberately unused by existing producers. It is not a wire
-schema or an advertised capability. Current observer, evaluation, legacy viewer,
-public schemas and catalog bytes remain unchanged. Integration requires a new
-versioned producer/consumer contract and separate end-to-end qualification.
+`geometry.py` serves the private opt-in observer V2 producer. It is not an
+advertised public capability. Observer V1 remains the default; evaluation,
+legacy viewer, public schemas and catalog bytes remain unchanged. Consumer
+integration and end-to-end qualification are separate gates.
 
 ## Interface
 
@@ -123,11 +123,96 @@ terrain arrays. Geometry is never truncated or flattened to pass a cap.
 `POSE_TYPE`, `POSE_SHAPE`, `ENVIRONMENT_INDICES` and `NONFINITE_POSE`.
 Coordinates and pose components must also have magnitude ≤1000000.
 
-The current registered training Rough configuration is observed as 5×5, even at
-4096 origins: an existing factory shares its terrain configuration with play
-registration, which mutates its dimensions to 5×5. The original generator mode is already
-random (`curriculum=False`); this work does not infer or restore a true mode. This module does not fix or depend on that
-mutation as intended behavior. The owning tests distinguish unchanged-factory
-metadata evidence from explicitly copied 10×20 stress input. Neither constitutes
-training/evaluation quality, all-recipe functionality, 20 Hz overhead, GPU,
-interactive rendering or public launch qualification.
+The predecessor factory-isolation fix restores the registered training Rough
+configuration to 10×20 with `curriculum=False`, independent of play registration.
+Its prior CPU Scene-only evidence covers 4096 origins and 20999 source geoms
+projected to 219 slots; this observer integration does not repeat that expensive
+compile or change builder math. Neither that evidence nor CPU observer fixtures
+constitutes training/evaluation quality, all-recipe functionality, 20 Hz overhead,
+GPU, interactive rendering or public launch qualification.
+
+## Selected CPU packing and observer V2
+
+`pack_selected(positions, matrices, *, environment_indices, environment_count)`
+accepts completed CPU NumPy or Torch floating buffers shaped `[N, D, 3]` and
+`[N, D, 3, 3]`, where `D == len(dynamic_mapping)` and columns follow that exact
+mapping order. It validates distinct integer environment indices against the
+actual environment count, dimensions, floating types, finite values and coordinate
+ranges. It checks the encoded frame budget before dense allocation and again
+after encoding. Fixed slots come from the immutable projection constants. The
+trusted caller owns proof that its rows/columns came from those actual source
+indices, and owns completion of any asynchronous transfer. This is not a JSON
+input API. The synchronous `capture` helper remains compatible and delegates
+packing after its selected gather; the PPO observer does not call `capture`.
+
+`attach_observer(env, directory, job, spec, *, version=1)` accepts exact integer
+1 or 2; booleans and unknown versions refuse with `OBSERVER_VERSION_UNSUPPORTED`.
+V2 resolves the trusted root from
+`env.scene.entities['robot'].indexing.root_body_id`. Geometry V2 includes every
+`export()` field, plus job/request/config/model identity and
+`ROM_TRAINING_OBSERVER_GEOMETRY_V2`. Its compact encoded `geometry.json` is bounded
+to 64 MiB and published once on the worker before frames. Frames use
+`ROM_TRAINING_OBSERVER_FRAME_V2`, the existing identity/time fields, and the
+projection's packed fields (no V1 `positions`/`matrices`). The complete encoded
+`latest.json` is bounded to 262144 bytes. Identity metadata is preflight bounded
+to 2048 bytes, within packing's 4096-byte wrapper reservation.
+
+The observer samples only after the normal step returns, preserving that exact
+return value. It uses the first `min(9, env.num_envs)` actual rows, never synthetic
+training environments. Monotonic time, wall time, simulation time and sequence
+belong to capture admission, not writer completion. Admission is at most 20 Hz,
+with no sleep or blocking condition acquisition on the producer.
+
+Exactly two snapshot slots exist across all stages. Host storage and the two
+small source/environment index sets are allocated at attach, before worker
+startup. Each slot follows `idle -> queued -> working -> idle`; only the worker
+returns a slot to idle after completion and publication. The producer gathers
+both environment and dynamic source axes before any copy, without a full-source
+clone. CUDA uses the current training stream, fresh selected tensors, bounded
+pinned host targets and a recorded completion event. The worker alone waits,
+packs, serializes and performs filesystem/sink IO. Pending slots are never
+discarded/replaced, even behind incomplete GPU copies or blocked geometry IO.
+When both slots are owned, or the condition lock is busy, samples are skipped.
+
+Capture/copy/event/encoding/sink failures stop optional observation and preserve
+training. A partial CUDA copy remains owned: the worker fences its stream if
+completion recording failed. A failed fence quarantines that slot without reuse.
+Close signals stop without acquiring the condition, touching disk or fencing GPU
+work, then joins for at most 0.1 seconds. The worker drains outstanding transfers;
+a permanently blocked sink/event may retain a daemon and its two bounded slots
+until process teardown. No worker advances a simulator. Allocation/preflight
+failure starts no worker. Attach installs the step hook before starting the
+worker; a rejected hook starts no worker, and a start failure restores the hook.
+
+## Image-owned activation
+
+`managed_training.observer_version(release)` returns 1 when
+`trainingWorkbenchReadV2` is absent, 2 for exact verified proof, and 0 to disable
+optional observation for malformed or ambiguous V2 proof. Simultaneous V1 and
+V2 descriptors are ambiguous. V2 requires exactly `schemaVersion`, `channels`
+and `producerSha256`; schema is `ROM_TRAINING_WORKBENCH_READ_CAPABILITY_V2`;
+channels in order are `OBSERVER_FRAME`, `MODEL_GEOMETRY`, `CHECKPOINT_INDEX`,
+`ENGINE_CONFIGURATION`, `EXPERIMENT_ARCHIVE`. Exact lowercase `sha256:64hex` pins
+must match installed package bytes for these seven paths:
+
+- `workbench/observer.py`
+- `workbench/geometry.py`
+- `workbench/checkpoints.py`
+- `workbench/engine.py`
+- `workbench/resources/request.schema.json`
+- `managed_training.py`
+- `rom/viewer.py`
+
+Preflight resolves this solely from its already-read immutable image recipe and
+stores the optional version without changing evidence or job digests. Execute
+uses it only for experiment jobs; fake runtimes overriding preflight retain the
+legacy default of 1. Invalid proof never rejects ordinary training and never
+silently falls back to V1. No job flag, environment variable or operator setting
+activates V2. New image metadata, Edge validation, consumers and staging remain
+separate root-owned work; existing images without the descriptor emit V1.
+
+Concurrency tests use NumPy/Torch CPU arrays and explicitly simulated CUDA
+events. A self-contained actual Flat Scene compile plus trusted indexing stub
+checks model integration without native Env/reset/step/JIT. Actual CUDA timing,
+copy overhead, nine real training environments, and browser rendering remain
+pilot gates.
