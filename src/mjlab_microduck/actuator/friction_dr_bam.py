@@ -18,7 +18,7 @@ each episode by the ``randomize_bam_friction`` event (see tasks/mdp.py).
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 from bam.mjlab import BamActuator, BamActuatorCfg
@@ -27,6 +27,23 @@ from mjlab.actuator.actuator import ActuatorCmd
 
 class FrictionDRBamActuator(BamActuator):
     """BamActuator + per-env friction_scale on the BAM friction budget."""
+
+    def __init__(self, cfg, entity, target_ids, target_names):
+        super().__init__(cfg, entity, target_ids, target_names)
+        # Explicit numeric model parameters only, after loading hash-pinned data.
+        allowed = {'kt','R','armature','friction_base','friction_stribeck',
+                   'friction_viscous','load_friction_motor','load_friction_external',
+                   'dtheta_stribeck','alpha','max_velocity'}
+        for key, value in cfg.parameter_overrides.items():
+            if key not in allowed or type(value) not in (int,float) or not 0 <= value <= 100:
+                raise ValueError('MANAGED_ACTUATOR_PARAMETER_INVALID')
+            if key in {'kt','R','dtheta_stribeck','alpha','max_velocity'} and value <= 0:
+                raise ValueError('MANAGED_ACTUATOR_PARAMETER_INVALID')
+            target = self._bam_model if hasattr(self._bam_model,key) else self._bam_model.actuator
+            parameter = getattr(target,key,None)
+            if parameter is None or not hasattr(parameter,'value'):
+                raise ValueError('MANAGED_ACTUATOR_PARAMETER_INVALID')
+            parameter.value = value
 
     def initialize(self, mj_model, model, data, device) -> None:
         super().initialize(mj_model, model, data, device)
@@ -56,6 +73,8 @@ class FrictionDRBamActuator(BamActuator):
 @dataclass(kw_only=True)
 class FrictionDRBamActuatorCfg(BamActuatorCfg):
     """Drop-in for BamActuatorCfg that builds a friction-DR-capable actuator."""
+
+    parameter_overrides: dict[str, float] = field(default_factory=dict)
 
     def build(self, entity, target_ids, target_names) -> FrictionDRBamActuator:
         return FrictionDRBamActuator(self, entity, target_ids, target_names)

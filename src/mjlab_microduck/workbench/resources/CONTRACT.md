@@ -70,3 +70,87 @@ a file newline (exclude that newline when hashing). `example-invalid.json`
 changes the effective environment count without changing its identity and must
 be refused by semantic/digest verification even though its types are valid.
 No schema-only validator establishes semantic or digest verification.
+
+## Engine optional typed edits
+
+The optional groups `ppo`, `network`, `rewards`, `curriculum`, `observations`,
+`events`, `commands`, `physics`, `gains`, `calibration`, `teacherCheckpoints` are
+preserved verbatim in requested/effective configuration only when supplied.
+All old default experiments and digests remain identical. The request schema
+pins the editable data types; the engine additionally checks actual named terms,
+existing numeric leaf shapes, model names and physical bounds. Functions, class
+names, regex selectors, executable source and submitted filesystem paths cannot
+be overridden. Group names/term names use bounded symbolic identifiers.
+
+Reward/event/curriculum edits select existing terms, then `params` numeric data;
+reward `weight` can be set separately. Observation edits select group and term,
+then noise numeric bounds, scalar scale, clip pair, params or bounded delay.
+Histories and term ordering remain fixed, preserving 61 inputs. Commands use
+existing named numeric ranges/periods; pose command ranges are full 4/6 pairs.
+Top-level commandProfile freezes actual effective ranges and semantics after
+explicit range edits; effectiveConfig.commands also preserves the exact edits. Explicit
+static reward/event/command changes replace their factory curricula unless the
+matching curriculum term is also explicitly edited. This prevents a factory
+curriculum silently overwriting the submitted setting at step zero.
+
+Curriculum step thresholds count aggregate samples using the upstream training
+reference of 4096 environments: actual stage env-step = round(base stage env-step
+* 4096 / actual numEnvs). Rollout length changes batching, not the number of
+samples at each stage. engine-configuration.json records effective thresholds,
+reference count and rollout length. Resume requires the identical resolved
+experiment and restores the upstream common_step_counter from its checkpoint.
+
+`physics` supports gravity, solverIterations, named bodies (mass, ipos, inertia),
+joints (range, stiffness), contacts (friction,
+solref, solimp, margin, gap) and explicitly allowed numeric actuatorParameters.
+Physical changes apply to copies of the actual model/BAM configuration.
+`calibration.jointZeroOffsets` adjusts default servo reference positions by name
+within 0.2 radians; passive joints cannot be calibrated as servos. These edits
+are experiment data and carry no physical robot qualification.
+
+Joint recipes require teacherCheckpoints.walk and .stand, each exactly
+{jobId, checkpointSha256, configDigest}. The engine resolves private sibling
+request/experiment/checkpoint manifests, checks compatible physical,
+observation/action/calibration contracts, validates file hashes and uses
+weights_only checkpoint loading plus strict actor/normalizer state layouts.
+Teacher networks may differ in width and each applies its own frozen empirical
+normalizer. A bounded supervised update (coefficient 0.1, at most 1024 rollout
+samples) follows PPO using the same raw observations; gravity-z selects walking
+or recovery supervision. No teacher parameters or normalizers are updated.
+This independent adaptation reuses the installed rsl_rl models/PPO and adds no
+reference studio implementation. Its effectiveness requires GPU qualification.
+
+Experimental jobs publish checkpoint-index.json with ten available content-hash
+generations, bounded eviction metadata, iteration/job/request/config identities
+and a declared retention policy. Legacy jobs retain their two-generation path.
+Experimental ONNX packages use ROM_MANAGED_POLICY_BUNDLE_V2 with exact ZIP members
+manifest.json and policy.onnx; V1 stays walking-only and unchanged. V2 retains
+outer image/source/request pins and distinct inner experimentConfigDigest and
+experimentRecipeDigest. It embeds the immutable experiment, profile, action,
+command semantics, empirical normalizer proof, executionEnvironment SIMULATOR,
+provenance MANAGED and qualified false. Qualified false describes evidence only.
+
+The optional observer taps post-step data from actual training environments,
+never advances/reset/commands them, samples at most nine environments at 20 Hz,
+and keeps one pending frame plus one in-flight sink write. Geometry is separate
+from latest.json; both include job/request/config/model identities. GPU copies
+are asynchronous pinned-buffer snapshots and their event synchronization occurs
+in the sink worker. Failure is isolated from the original env.step return/error
+and PPO. These files are local diagnostic artifacts; transport, permissions and
+browser delivery are separate work. CPU tests cannot measure actual GPU overhead.
+
+Named joint damping, armature and frictionloss edits are explicitly unsupported
+and rejected with MANAGED_BAM_JOINT_PARAMETER_UNSUPPORTED: BAM owns those fields
+and would overwrite raw spec edits. Use physics.actuatorParameters.armature for
+the supported whole-actuator motor inertia, friction_base for its Coulomb budget,
+and friction_viscous for its runtime viscous budget. These model parameters are
+applied before actuator construction, so inertia survives in the compiled model
+and friction is used by BAM at runtime. Named passive-joint edits remain refused.
+Experimental resume selects available checkpoint-index generations directly; it
+does not pass through the legacy latest-only checkpoint pointer. Eviction metadata
+does not authorize reading an evicted file, even if a stale file still exists.
+
+For twist, head_pose and body_pose, resampling_time_range is exactly a JSON list
+of two finite numbers (booleans excluded), with 0.1 <= low <= high <= 120 seconds.
+Malformed shapes, reversed intervals and out-of-bound intervals are refused during
+canonical resolution, before an experiment can launch.

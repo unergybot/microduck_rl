@@ -24,7 +24,7 @@ def gpu_sharing_mode(job):
 
 def validate_request(job):
     allowed = {'jobId', 'scope', 'requestDigest', 'kind', 'numEnvs', 'iterations', 'seed', 'timeoutSeconds',
-               'parentJobId', 'checkpointSha256', 'idempotencyKey', 'limits'}
+               'parentJobId', 'checkpointSha256', 'idempotencyKey', 'limits', 'experimentJson'}
     require(set(job) <= allowed and job.get('scope', {}).get('environment') == 'SIMULATOR', 'MANAGED_SIMULATOR_REQUIRED')
     require(job.get('kind') in ('COMMISSION', 'TRAIN') and re.fullmatch(r'[-A-Za-z0-9_]{1,80}', job.get('jobId', '')), 'MANAGED_RECIPE_INVALID')
     require(gpu_sharing_mode(job) in ('', 'EXCLUSIVE') or job['kind'] == 'COMMISSION', 'MANAGED_SHARED_COMMISSION_REQUIRED')
@@ -35,7 +35,35 @@ def validate_request(job):
     else:
         limits = job['limits']
         require(limits.get('normalEnabled') is True and job['numEnvs'] <= int(limits['maxEnvs']) and job['iterations'] <= int(limits['maxIterations']), 'MANAGED_ENVELOPE_EXCEEDED')
-    return TASK
+    spec = experiment(job)
+    return spec['taskId'] if spec else TASK
+
+
+def experiment(job):
+    text = job.get('experimentJson', '')
+    if not text: return None
+    from mjlab_microduck.workbench import verify_experiment, canonical_json
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            require(key not in value, 'MANAGED_EXPERIMENT_INVALID'); value[key] = item
+        return value
+    require(type(text) is str and len(text.encode('utf-8')) <= 65536, 'MANAGED_EXPERIMENT_INVALID')
+    spec = verify_experiment(json.loads(text, object_pairs_hook=pairs))
+    require(canonical_json(spec) == text, 'MANAGED_EXPERIMENT_INVALID')
+    require(all(spec['effectiveConfig'][k] == job[k] for k in ('numEnvs', 'iterations', 'seed')), 'MANAGED_EXPERIMENT_PARAMETERS_MISMATCH')
+    return spec
+
+
+def verify_image_experiment(identity, spec):
+    from importlib.resources import files
+    from mjlab_microduck.workbench import catalog, canonical_json
+    digest = lambda value: 'sha256:' + hashlib.sha256(canonical_json(value).encode()).hexdigest()
+    descriptor = identity.get('trainingExperimentsV1', {})
+    require(set(descriptor) == {'catalogRevision','catalogSha256','schemaSha256','recipeDigests','robotProfileIds'}, 'MANAGED_EXPERIMENT_IMAGE_UNSUPPORTED')
+    schema = json.loads(files('mjlab_microduck.workbench').joinpath('resources/request.schema.json').read_text())
+    require(descriptor['catalogRevision'] == spec['catalogRevision'] and descriptor['catalogSha256'] == digest(catalog()) and descriptor['schemaSha256'] == digest(schema), 'MANAGED_EXPERIMENT_IMAGE_MISMATCH')
+    require(spec['recipeDigest'] in descriptor['recipeDigests'] and spec['robotProfileId'] in descriptor['robotProfileIds'], 'MANAGED_EXPERIMENT_IMAGE_UNSUPPORTED')
 
 
 def atomic_json(path, value):
@@ -53,7 +81,7 @@ def artifact(path, kind):
     return {'artifactId': path.name, 'kind': kind, 'sha256': 'sha256:' + digest, 'sizeBytes': path.stat().st_size}
 
 
-def publish_checkpoint(source, directory):
+def publish_checkpoint(source, directory, *, retain_history=False):
     source = Path(source); directory = Path(directory)
     temporary = directory / 'checkpoint.tmp'
     with source.open('rb') as src, temporary.open('wb') as dst:
@@ -67,7 +95,7 @@ def publish_checkpoint(source, directory):
     # Only prune after the durable pointer commits; keep its predecessor for interrupted readers.
     keep = {value['artifactId']} | {a['artifactId'] for a in previous}
     for old in directory.glob('checkpoint-*.pt'):
-        if old.name not in keep: old.unlink()
+        if not retain_history and old.name not in keep: old.unlink()
     return value
 
 
@@ -83,6 +111,20 @@ def resume_checkpoint(job, directory):
     require(path.is_file() and not path.is_symlink() and manifest.is_file() and not manifest.is_symlink(), 'MANAGED_CHECKPOINT_UNVERIFIED')
     value = artifact(path, 'CHECKPOINT')
     require(value['sha256'] == job['checkpointSha256'] and value in json.loads(manifest.read_text()).get('artifacts', []), 'MANAGED_CHECKPOINT_UNVERIFIED')
+    return path
+
+
+def select_resume_checkpoint(job, directory, spec=None):
+    """Experiments select verified available history; legacy keeps latest-only."""
+    if spec is None:
+        return resume_checkpoint(job, directory)
+    if not job.get('parentJobId'):
+        return None
+    from mjlab_microduck.workbench.checkpoints import trusted_checkpoint
+    path, previous = trusted_checkpoint(directory, job, dict(
+        jobId=job['parentJobId'], checkpointSha256=job['checkpointSha256'],
+        configDigest=spec['configDigest']))
+    require(previous == spec, 'MANAGED_CHECKPOINT_CONFIG_MISMATCH')
     return path
 
 
@@ -115,6 +157,8 @@ class Runtime:
         identity = json.loads(Path('/opt/rom-trainer/recipe.json').read_text())
         for key in ('recipeDigest', 'modelDigest', 'dependencyDigest'):
             require(identity[key] == job['limits'][key], 'MANAGED_RECIPE_MISMATCH')
+        spec = experiment(job)
+        if spec: verify_image_experiment(identity, spec)
         raw = subprocess.check_output(['nvidia-smi', '--query-gpu=uuid,driver_version,memory.free', '--format=csv,noheader,nounits'], text=True, timeout=5)
         rows = [line.split(',') for line in raw.strip().splitlines()]
         require(len(rows) == 1 and len(rows[0]) == 3, 'MANAGED_EXACT_GPU_REQUIRED')
@@ -164,7 +208,14 @@ class Runtime:
         from mjlab.rl.exporter_utils import attach_metadata_to_onnx, get_base_metadata
         from mjlab_microduck.rom.export_metadata import attach_microduck_metadata
         configure_torch_backends()
-        env_cfg = load_env_cfg(task); agent_cfg = load_rl_cfg(task)
+        spec = experiment(job)
+        if spec:
+            from mjlab_microduck.workbench.engine import build_configs
+            env_cfg, agent_cfg = build_configs(spec)
+            atomic_json(directory / 'experiment.json', spec)
+            atomic_json(directory / 'engine-configuration.json', dict(configDigest=spec['configDigest'], curriculumReferenceEnvs=4096, numStepsPerEnv=agent_cfg.num_steps_per_env, effectiveCurriculum={name:{key:value for key,value in term.params.items() if key.endswith('_stages')} for name,term in env_cfg.curriculum.items()}))
+        else:
+            env_cfg = load_env_cfg(task); agent_cfg = load_rl_cfg(task)
         env_cfg.scene.num_envs = job['numEnvs']; env_cfg.seed = job['seed']
         agent_cfg.seed = job['seed']; agent_cfg.max_iterations = job['iterations']; agent_cfg.logger = 'tensorboard'
         agent_cfg.resume = False; agent_cfg.save_interval = min(50, job['iterations'])
@@ -175,6 +226,11 @@ class Runtime:
             while not stopped.wait(.25):
                 free, total = torch.cuda.mem_get_info(0); peak[0] = max(peak[0], total - free)
         sampler = threading.Thread(target=sample_memory, daemon=True); sampler.start()
+        teachers = {}
+        if spec:
+            from mjlab_microduck.workbench.checkpoints import load_teachers
+            teachers = load_teachers(spec, job, directory, 'cuda:0')
+        observer = None
         env = ManagerBasedRlEnv(cfg=env_cfg, device='cuda:0')
         try:
             require(abs(env.step_dt - .02) < 1e-8, 'MANAGED_CONTROL_RATE_INVALID')
@@ -185,12 +241,31 @@ class Runtime:
                 observe_runner(runner, directory, job)
             except Exception:  # Optional observations must not change accepted jobs or PPO.
                 pass
-            checkpoint = resume_checkpoint(job, directory)
+            if spec:
+                if teachers:
+                    from mjlab_microduck.workbench.checkpoints import attach_teachers
+                    attach_teachers(runner, teachers)
+                try:
+                    from mjlab_microduck.workbench.observer import attach_observer
+                    observer = attach_observer(env, directory, job, spec)
+                except Exception: pass
+            checkpoint = select_resume_checkpoint(job, directory, spec)
             if checkpoint: runner.load(str(checkpoint), map_location='cuda:0')
             save = runner.save
             def managed_save(path, infos=None):
                 require(shutil.disk_usage(directory).free >= 1 << 30, 'MANAGED_DISK_EXHAUSTED')
-                save(path, infos); publish_checkpoint(Path(path), directory)
+                save(path, infos); published = publish_checkpoint(Path(path), directory, retain_history=bool(spec))
+                if spec:
+                    index = directory / 'checkpoint-index.json'
+                    previous = json.loads(index.read_text()).get('checkpoints', []) if index.is_file() else []
+                    generations = [g for g in previous if g['artifact']['sha256'] != published['sha256']] + [dict(iteration=runner.current_learning_iteration, artifact=published)]
+                    evicted = json.loads(index.read_text()).get('evictedCheckpoints', []) if index.is_file() else []
+                    evicted = (evicted + generations[:-10])[-4096:]
+                    generations = generations[-10:]
+                    atomic_json(index, dict(schemaVersion='ROM_TRAINING_CHECKPOINT_INDEX_V1', jobId=job['jobId'], requestDigest=job['requestDigest'], configDigest=spec['configDigest'], retentionPolicy=dict(maxCheckpointFiles=10,metadataMaxEntries=4096), checkpoints=generations, evictedCheckpoints=evicted))
+                    keep = {g['artifact']['artifactId'] for g in generations}
+                    for old in directory.glob('checkpoint-*.pt'):
+                        if old.name not in keep: old.unlink()
                 # Bounded immutable checkpoint generations plus the current runner file.
                 for previous in work.glob('model_*.pt'):
                     if previous != Path(path): previous.unlink()
@@ -203,6 +278,12 @@ class Runtime:
             exported = directory / 'policy.tmp.onnx'
             attach_metadata_to_onnx(str(exported), get_base_metadata(env, run_path=job['jobId']))
             attach_microduck_metadata(exported, task_id=task, source_commit=Path('/opt/rom-trainer/source-revision.txt').read_text().strip(), checkpoint=checkpoint_artifact['artifactId'], run_identity=job['jobId'])
+            if spec:
+                import onnx
+                model = onnx.load(str(exported))
+                for key,value in {'microduck.experiment_config_digest':spec['configDigest'],'microduck.recipe_digest':spec['recipeDigest'],'microduck.robot_profile_id':spec['robotProfileId'],'microduck.action_id':spec['actionId'],'microduck.action_filter':'NONE','microduck.command_profile':json.dumps(spec['commandProfile'],sort_keys=True)}.items():
+                    entry=model.metadata_props.add(); entry.key=key; entry.value=value
+                onnx.save(model,str(exported))
             import numpy as np
             import onnxruntime as ort
             session = ort.InferenceSession(str(exported), providers=['CPUExecutionProvider'])
@@ -217,6 +298,7 @@ class Runtime:
                             peakGpuMemoryBytes=max(peak[0], torch.cuda.max_memory_allocated()), policySha256=policy['sha256'])
             return {'success': True, 'executionState': 'SUCCEEDED', 'exportState': 'SUCCEEDED', 'artifacts': [checkpoint_artifact, policy], 'evidence': evidence}
         finally:
+            if observer: observer.close()
             stopped.set(); sampler.join(timeout=1); env.close()
 
 
@@ -225,9 +307,14 @@ def publish_result_bundle(job, directory, result, publisher=None, source_commit=
     if result.get('exportState') != 'SUCCEEDED':
         return
     try:
+        spec = experiment(job)
         if publisher is None:
-            from mjlab_microduck.rom.managed_bundle import publish_bundle
-            publisher = publish_bundle
+            if spec:
+                from mjlab_microduck.workbench.bundle import publish_bundle
+                publisher = lambda policy,output,pins: publish_bundle(policy,output,pins,spec)
+            else:
+                from mjlab_microduck.rom.managed_bundle import publish_bundle
+                publisher = publish_bundle
         source_commit = source_commit or Path('/opt/rom-trainer/source-revision.txt').read_text().strip()
         checkpoints = [a for a in result['artifacts'] if a['kind'] == 'CHECKPOINT']
         pins = dict(modelDigest=job['limits']['modelDigest'], recipeDigest=job['limits']['recipeDigest'],

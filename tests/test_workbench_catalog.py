@@ -191,3 +191,24 @@ def test_portable_examples_match_canonical_bytes_and_reject_modified_effective_c
     assert example['configDigest'] == 'sha256:8c562ba28830e1c40c08f7f16d2e553113e0780c8b211f3f82f5cec24aa365be'
     with pytest.raises(ValueError):
         verify_experiment(json.loads((root / 'example-invalid.json').read_text()))
+
+
+def test_effective_command_ranges_and_phase_period_are_frozen_without_reinterpreting_tasks():
+    value=resolve_experiment(request(commands={'twist':{'ranges':{'lin_vel_x':[-.1,.2]}}}))
+    assert value['commandProfile']['twistRanges'][0]==[-.1,.2]
+    phase=resolve_experiment(request('Mjlab-RollerCrouch-Flat-MicroDuck',commands={'twist':{'period':6}}))
+    assert phase['commandProfile']['phasePeriodSeconds']==6
+    for recipe in ('Mjlab-RollerSlope-Flat-MicroDuck','Mjlab-RollerCrouch-Flat-MicroDuck','Mjlab-SitStand-Flat-MicroDuck'):
+        with pytest.raises(ValueError):resolve_experiment(request(recipe,commands={'twist':{'ranges':{'lin_vel_x':[-.1,.1]}}}))
+
+
+@pytest.mark.parametrize('name',['twist','head_pose','body_pose'])
+@pytest.mark.parametrize('duration',[True,[10,-1],[1],[1,2,3],[False,2],[.09,1],[1,121],[2,1],['1',2],float('inf')])
+def test_command_resampling_duration_rejects_invalid_shapes_and_bounds(name,duration):
+    with pytest.raises(ValueError):resolve_experiment(request(commands={name:{'resampling_time_range':duration}}))
+
+
+@pytest.mark.parametrize('name',['twist','head_pose','body_pose'])
+def test_command_resampling_duration_keeps_valid_bounds(name):
+    value=resolve_experiment(request(commands={name:{'resampling_time_range':[.1,120]}}))
+    assert value['effectiveConfig']['commands'][name]['resampling_time_range']==[.1,120]

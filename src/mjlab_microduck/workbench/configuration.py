@@ -1,5 +1,6 @@
 """Strict typed resolution against the versioned portable recipe snapshot."""
 from copy import deepcopy
+from .parameters import GROUPS, validate_groups
 from decimal import Decimal
 import hashlib
 from importlib.resources import files
@@ -64,9 +65,11 @@ def catalog() -> dict:
 
 
 def _config(value):
-    if type(value) is not dict or value.keys() - _FIELDS.keys():
+    if type(value) is not dict or value.keys() - (_FIELDS.keys() | GROUPS):
         raise ValueError('WORKBENCH_CONFIG_INVALID')
+    validate_groups(value)
     for key, number in value.items():
+        if key in GROUPS: continue
         kind, low, high = _FIELDS[key]
         allowed = (int,) if kind is int else (int, float)
         if type(number) not in allowed or not low <= number <= high:
@@ -103,6 +106,32 @@ def resolve_experiment(request: dict) -> dict:
                  ('recipeId', 'taskId', 'actionId', 'terrain', 'backlash', 'factoryOverrides', 'commandProfile')},
               'robotProfileId': profile['robotProfileId'], 'teacherRequirements': teachers,
               'requestedConfig': requested, 'effectiveConfig': effective, 'recipeDigest': _digest(recipe)}
+    commands=requested.get('commands',{})
+    for name,changes in commands.items():
+        if name not in ('twist','head_pose','body_pose') or type(changes) is not dict or changes.keys()-{'ranges','period','resampling_time_range'}:
+            raise ValueError('WORKBENCH_CONFIG_INVALID')
+        if 'resampling_time_range' in changes:
+            duration=changes['resampling_time_range']
+            if type(duration) is not list or len(duration)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in duration) or not .1<=duration[0]<=duration[1]<=120:
+                raise ValueError('WORKBENCH_CONFIG_INVALID')
+        ranges=changes.get('ranges')
+        if ranges is not None:
+            if name=='twist':
+                if result['commandProfile']['twistSemantics'] not in ('body-velocity','bidirectional-propulsion-heading-error','propulsion-brake-heading-error'):raise ValueError('WORKBENCH_CONFIG_INVALID')
+                fields={'lin_vel_x':0,'lin_vel_y':1,'ang_vel_z':2}
+                if type(ranges) is not dict or ranges.keys()-fields.keys():raise ValueError('WORKBENCH_CONFIG_INVALID')
+                pairs=[(fields[k],v) for k,v in ranges.items()]
+                target='twistRanges'
+            else:
+                size=4 if name=='head_pose' else 6
+                if type(ranges) is not list or len(ranges)!=size:raise ValueError('WORKBENCH_CONFIG_INVALID')
+                pairs=list(enumerate(ranges));target='headPoseRanges' if name=='head_pose' else 'bodyPoseRanges'
+            for index,pair in pairs:
+                if type(pair) is not list or len(pair)!=2 or any(type(v) not in (int,float) or abs(v)>1000 for v in pair) or pair[0]>pair[1]:raise ValueError('WORKBENCH_CONFIG_INVALID')
+                result['commandProfile'][target][index]=deepcopy(pair)
+        if 'period' in changes:
+            if name!='twist' or result['commandProfile']['twistSemantics']!='phase-clock' or type(changes['period']) not in (int,float) or not .1<=changes['period']<=120:raise ValueError('WORKBENCH_CONFIG_INVALID')
+            result['commandProfile']['phasePeriodSeconds']=changes['period']
     result['configDigest'] = _digest(result)
     return result
 
