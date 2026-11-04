@@ -364,3 +364,335 @@ def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tm
     result = json.loads((tmp_path / 'result.json').read_text())
     assert result['detailCode'] == ('MANAGED_TRAINING_FAILED' if learn_fails else 'MANAGED_EXPORT_FAILED')
     assert result['executionState'] == ('FAILED' if learn_fails else 'SUCCEEDED')
+
+
+def measured_host(tmp_path, monkeypatch, *, fault=None, saves=0):
+    """Local measured-runtime fixture. No shared request/legacy fixture is changed."""
+    import threading
+    from dataclasses import dataclass
+    from types import ModuleType
+    import numpy as np
+    console_spec = importlib.util.spec_from_file_location('mjlab_microduck.training_console',
+        Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
+    console = importlib.util.module_from_spec(console_spec); console_spec.loader.exec_module(console)
+    monkeypatch.setitem(sys.modules, 'mjlab_microduck.training_console', console)
+    value = job(); value['requestDigest'] = 'sha256:' + 'a' * 64
+    events = []; captured = {}; queried = threading.Event()
+    def fail(name):
+        events.append(name)
+        if fault == name: raise RuntimeError('original ' + name)
+    @dataclass
+    class Config:
+        clip_actions: float = 1.
+        num_steps_per_env: int = 7
+    cfg = SimpleNamespace(scene=SimpleNamespace(), curriculum={})
+    def device_query(index):
+        assert index == 0
+        queried.set()
+        return 200, 1000
+    cuda = SimpleNamespace(mem_get_info=device_query, max_memory_allocated=lambda *a: 300,
+                           max_memory_reserved=lambda *a: 400)
+    env = SimpleNamespace(step_dt=.02, num_envs=64, close=lambda: fail('cleanup'))
+    def environment(**kwargs):
+        assert queried.wait(1)
+        fail('environment'); return env
+    class Runner:
+        current_learning_iteration = 0
+        logger = SimpleNamespace(writer=None, init_logging_writer=lambda: None, log=lambda: None)
+        def save(self, path, infos=None):
+            fail('checkpoint'); Path(path).write_bytes(b'checkpoint')
+        def learn(self, **kwargs):
+            fail('training')
+            for index in range(saves): self.save(str(tmp_path / 'work' / f'model_{index}.pt'))
+        def export_policy_to_onnx(self, directory, name):
+            fail('onnx'); (Path(directory) / name).write_bytes(b'fake ONNX test bytes')
+    runner = Runner()
+    def construct(*args):
+        fail('runner'); return runner
+    def configure(): fail('config')
+    modules = {
+        'mjlab': {}, 'mjlab.tasks': {},
+        'mjlab.envs': {'ManagerBasedRlEnv': environment},
+        'mjlab.rl': {'MjlabOnPolicyRunner': construct, 'RslRlVecEnvWrapper': lambda *a, **kw: env},
+        'mjlab.tasks.registry': {'load_env_cfg': lambda _: cfg, 'load_rl_cfg': lambda _: Config(),
+                                'load_runner_cls': lambda _: None},
+        'mjlab.utils.torch': {'configure_torch_backends': configure},
+        'mjlab.rl.exporter_utils': {'attach_metadata_to_onnx': lambda *a: fail('metadata'),
+                                  'get_base_metadata': lambda *a, **kw: {}},
+        'mjlab_microduck.rom.export_metadata': {'attach_microduck_metadata': lambda *a, **kw: None},
+        'torch': {'cuda': cuda},
+        'onnxruntime': {'InferenceSession': lambda *a, **kw: SimpleNamespace(
+            get_inputs=lambda: [SimpleNamespace(shape=[1, 61], name='obs')],
+            run=lambda *a: [np.zeros((1, 14))])},
+    }
+    for name, attributes in modules.items():
+        module = ModuleType(name); module.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, module)
+    if fault == 'teachers':
+        spec = {'taskId': managed.TASK, 'configDigest': 'sha256:' + 'b' * 64}
+        monkeypatch.setattr(managed, 'experiment', lambda _: spec)
+        for name, attributes in {
+            'mjlab_microduck.workbench.engine': {'build_configs': lambda _: (cfg, Config())},
+            'mjlab_microduck.workbench.checkpoints': {'load_teachers': lambda *a: fail('teachers')},
+        }.items():
+            module = ModuleType(name); module.__dict__.update(attributes)
+            monkeypatch.setitem(sys.modules, name, module)
+    runtime_class = managed.Runtime
+    class MeasuredRuntime(runtime_class):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            captured.update(recorder=self.measurements, collector=self.collector)
+        def preflight(self, accepted):
+            fail('preflight'); return {}
+    monkeypatch.setattr(managed, 'Runtime', MeasuredRuntime)
+    monkeypatch.setattr(managed.shutil, 'disk_usage', lambda _: SimpleNamespace(free=20 << 30))
+    read = Path.read_text
+    monkeypatch.setattr(Path, 'read_text', lambda path, *a, **kw:
+                        'a' * 40 if str(path) == '/opt/rom-trainer/source-revision.txt' else read(path, *a, **kw))
+    def package(accepted, directory, result):
+        events.append('package')
+        result['publicationState'] = 'FAILED' if fault == 'package' else 'LOCAL_READY'
+        if fault == 'package': result['detailCode'] = 'MANAGED_BUNDLE_FAILED'
+    monkeypatch.setattr(managed, 'publish_result_bundle', package)
+    request = tmp_path / 'request.json'; request.write_text(json.dumps(value))
+    return request, captured, events
+
+
+@pytest.mark.parametrize('fault', [None, 'preflight', 'config', 'teachers', 'environment', 'runner',
+                                  'training', 'checkpoint', 'onnx', 'metadata', 'cleanup', 'package'])
+def test_measurements_preserve_phase_failure_and_authoritative_results(tmp_path, monkeypatch, fault):
+    request, captured, events = measured_host(tmp_path, monkeypatch, fault=fault)
+    code = managed.run_managed(request)
+    collector = captured['collector']; collector._thread.join(timeout=3)
+    assert not collector._thread.is_alive()
+    recorder = captured['recorder']; points = recorder.snapshot()[1]
+    result = json.loads((tmp_path / 'result.json').read_text())
+    if fault in (None, 'package'):
+        assert code == 0 and result['success'] is True
+        assert result['evidence']['peakGpuMemoryBytes'] == 800
+        assert points['Measurement/terminalState'] == 1
+        assert points['MeasurePhase/package/state'] == (3 if fault == 'package' else 2)
+        assert points['MeasurePhase/onnx/state'] == 2
+    else:
+        assert code == 1 and result['success'] is False
+        assert points['Measurement/terminalState'] == 2
+        assert points['MeasurePhase/package/state'] == 4
+    init_fault = fault in ('preflight', 'config', 'teachers', 'environment', 'runner')
+    assert points['MeasurePhase/initialization/state'] == (3 if init_fault else 2)
+    assert points['MeasurePhase/cleanup/state'] == (3 if fault == 'cleanup' else 2)
+    if fault not in ('preflight', 'config'):
+        assert points['MeasureMemory/deviceStatus'] == 2
+        assert points['MeasureMemory/deviceSampleCount'] >= 1
+        assert points['MeasureMemory/deviceUsedSampledMaxBytes'] == 800
+        assert points['MeasureMemory/torchAllocatedPeakBytes'] == 300
+        assert points['MeasureMemory/torchReservedPeakBytes'] == 400
+    if fault in ('onnx', 'metadata'):
+        assert points['MeasurePhase/onnx/state'] == 3
+        assert result['detailCode'] == 'MANAGED_EXPORT_FAILED'
+    if fault == 'training': assert points['MeasurePhase/training/state'] == 3
+    if fault == 'checkpoint':
+        assert points['MeasureCheckpoint/calls'] == 1
+        assert points['MeasurePhase/checkpoint/state'] == 3
+    if init_fault: assert 'training' not in events
+    assert 'MeasureTraining/completedTransitions' not in points  # local fake logger has no proof
+
+
+@pytest.mark.parametrize('saves,expected', [(0, 1), (2, 2)])
+def test_runtime_counts_periodic_and_fallback_checkpoint_wrappers(tmp_path, monkeypatch, saves, expected):
+    request, captured, _ = measured_host(tmp_path, monkeypatch, saves=saves)
+    assert managed.run_managed(request) == 0
+    collector = captured['collector']; collector._thread.join(timeout=3)
+    assert not collector._thread.is_alive()
+    points = captured['recorder'].snapshot()[1]
+    assert points['MeasureCheckpoint/calls'] == expected
+    assert points['MeasurePhase/checkpoint/state'] == 2
+    assert points['MeasurePhase/checkpoint/seconds'] >= 0
+
+
+def test_earlier_training_exception_survives_cleanup_failure(tmp_path, monkeypatch):
+    request, captured, _ = measured_host(tmp_path, monkeypatch, fault='training')
+    original = managed.Runtime
+    class CleanupFailure(original):
+        def execute(self, accepted, directory):
+            import mjlab.envs
+            create = sys.modules['mjlab.envs'].ManagerBasedRlEnv
+            def env(**kwargs):
+                instance = create(**kwargs)
+                instance.close = lambda: (_ for _ in ()).throw(ValueError('MANAGED_CLEANUP_TEST'))
+                return instance
+            monkeypatch.setattr(sys.modules['mjlab.envs'], 'ManagerBasedRlEnv', env)
+            return super().execute(accepted, directory)
+    monkeypatch.setattr(managed, 'Runtime', CleanupFailure)
+    assert managed.run_managed(request) == 1
+    captured['collector']._thread.join(timeout=3)
+    assert json.loads((tmp_path / 'result.json').read_text())['detailCode'] == 'MANAGED_TRAINING_FAILED'
+    assert captured['recorder'].snapshot()[1]['MeasurePhase/cleanup/state'] == 3
+
+
+@pytest.mark.parametrize('outcome', ['empty', 'one', 'invalid', 'failure'])
+def test_memory_sampler_truthful_windows_and_failed_query_stops(outcome):
+    import threading
+    console_spec = importlib.util.spec_from_file_location('memory_console',
+        Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
+    console = importlib.util.module_from_spec(console_spec); console_spec.loader.exec_module(console)
+    recorder = console.RunMeasurements({'numEnvs': 64}, clock=lambda: 10., started=2.)
+    done = threading.Event(); calls = []
+    def query(index):
+        calls.append(index); done.set()
+        if outcome == 'failure': raise OSError('query failed')
+        return (-1, 1000) if outcome == 'invalid' else (200, 1000)
+    sampler = managed.MemorySampler(query, recorder)
+    if outcome == 'empty': sampler.stopped.set()
+    sampler.start()
+    if outcome != 'empty': assert done.wait(1)
+    sampler.close()
+    assert not sampler.thread.is_alive()
+    points = recorder.snapshot()[1]
+    assert points['MeasureMemory/deviceSampleCount'] == (1 if outcome == 'one' else 0)
+    assert points['MeasureMemory/deviceSampleFailures'] == (1 if outcome in ('invalid', 'failure') else 0)
+    if outcome == 'one':
+        assert points['MeasureMemory/deviceStatus'] == 2
+        assert points['MeasureMemory/deviceUsedSampledMaxBytes'] == 800
+        assert points['MeasureMemory/deviceFirstSampleSeconds'] == 8
+        assert points['MeasureMemory/deviceLastSampleSeconds'] == 8
+    else:
+        assert 'MeasureMemory/deviceUsedSampledMaxBytes' not in points
+        assert 'MeasureMemory/deviceFirstSampleSeconds' not in points
+        assert points['MeasureMemory/deviceStatus'] == (0 if outcome == 'empty' else 3)
+    assert len(calls) <= 1
+
+
+def test_memory_sampler_bounded_join_discloses_late_unfinished_query():
+    import threading
+    entered, release = threading.Event(), threading.Event()
+    console_spec = importlib.util.spec_from_file_location('memory_console',
+        Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
+    console = importlib.util.module_from_spec(console_spec); console_spec.loader.exec_module(console)
+    recorder = console.RunMeasurements({'numEnvs': 64}, clock=lambda: 10., started=2.)
+    def query(index):
+        entered.set(); assert release.wait(3); return 200, 1000
+    sampler = managed.MemorySampler(query, recorder); sampler.start()
+    try:
+        assert entered.wait(1)
+        sampler.close()
+        points = recorder.snapshot()[1]
+        assert points['MeasureMemory/deviceStatus'] == 5
+        assert points['MeasureMemory/deviceSampleCount'] == 0
+        assert 'MeasureMemory/deviceUsedSampledMaxBytes' not in points
+    finally:
+        release.set(); sampler.thread.join(timeout=2)
+    assert not sampler.thread.is_alive()
+    points = recorder.snapshot()[1]
+    assert points['MeasureMemory/deviceStatus'] == 5
+    assert points['MeasureMemory/deviceSampleCount'] == 1
+
+
+def test_memory_sampler_multiple_queries_preserve_actual_window_and_cadence():
+    console_spec = importlib.util.spec_from_file_location('memory_console',
+        Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
+    console = importlib.util.module_from_spec(console_spec); console_spec.loader.exec_module(console)
+    clock = [3.]
+    recorder = console.RunMeasurements({'numEnvs': 64}, clock=lambda: clock[0], started=1.)
+    queries, waits = [], []
+    def query(index):
+        queries.append(index); clock[0] += 2
+        return (200, 1000) if len(queries) == 1 else (100, 1000)
+    class Stop:
+        def is_set(self): return False
+        def wait(self, interval):
+            waits.append(interval); return len(waits) == 2
+    sampler = managed.MemorySampler(query, recorder); sampler.stopped = Stop()
+    sampler._run()
+    points = recorder.snapshot()[1]
+    assert waits == [.25, .25] and queries == [0, 0]
+    assert points['MeasureMemory/deviceSampleCount'] == 2
+    assert points['MeasureMemory/deviceUsedSampledMaxBytes'] == 900
+    assert points['MeasureMemory/deviceFirstSampleSeconds'] == 4
+    assert points['MeasureMemory/deviceLastSampleSeconds'] == 6
+    assert points['MeasureMemory/deviceStatus'] == 2
+
+
+def test_initialization_includes_request_read_and_constructor_does_not_reset_entry(tmp_path, monkeypatch):
+    request, captured, _ = measured_host(tmp_path, monkeypatch, fault='preflight')
+    clock = [1.]
+    monkeypatch.setattr(managed.time, 'monotonic', lambda: clock[0])
+    module = sys.modules['mjlab_microduck.training_console']
+    original = module.RunMeasurements
+    monkeypatch.setattr(module, 'RunMeasurements', lambda accepted, *, started:
+                        original(accepted, started=started, clock=lambda: clock[0]))
+    read = Path.read_text
+    def reading(path, *args, **kwargs):
+        if path == request: clock[0] = 5.
+        return read(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'read_text', reading)
+    assert managed.run_managed(request) == 1
+    captured['collector']._thread.join(timeout=3)
+    points = captured['recorder'].snapshot()[1]
+    assert points['MeasurePhase/initialization/seconds'] == 4
+    assert points['MeasurePhase/initialization/state'] == 3
+
+
+def test_measurement_setup_failure_and_old_injected_runtime_remain_optional(tmp_path, monkeypatch):
+    request, captured, events = measured_host(tmp_path, monkeypatch)
+    module = sys.modules['mjlab_microduck.training_console']
+    monkeypatch.setattr(module, 'RunMeasurements', lambda *a, **kw: (_ for _ in ()).throw(OSError('optional recorder')))
+    assert managed.run_managed(request) == 0
+    assert 'training' in events and captured['recorder'] is None
+    class OldRuntime:
+        def execute(self, accepted, directory):
+            return {'success': True, 'exportState': 'PENDING', 'artifacts': []}
+    assert managed.run_managed(request, OldRuntime()) == 0
+
+
+def test_optional_sampler_cleanup_error_does_not_rewrite_success(tmp_path, monkeypatch):
+    request, captured, _ = measured_host(tmp_path, monkeypatch)
+    close = managed.MemorySampler.close
+    def failed_close(sampler):
+        close(sampler)
+        raise RuntimeError('optional sampler bookkeeping')
+    monkeypatch.setattr(managed.MemorySampler, 'close', failed_close)
+    assert managed.run_managed(request) == 0
+    captured['collector']._thread.join(timeout=3)
+    result = json.loads((tmp_path / 'result.json').read_text())
+    assert result['success'] is True and result['exportState'] == 'SUCCEEDED'
+    assert captured['recorder'].snapshot()[1]['MeasurePhase/cleanup/state'] == 3
+
+
+
+def test_initial_console_sink_failure_preserves_authoritative_result_and_sampler_cleanup(tmp_path, monkeypatch):
+    request, captured, _ = measured_host(tmp_path, monkeypatch)
+    (tmp_path / 'console').write_text('unavailable optional report directory')
+    assert managed.run_managed(request) == 0
+    collector = captured['collector']; collector._thread.join(timeout=3)
+    assert not collector._thread.is_alive()
+    result = json.loads((tmp_path / 'result.json').read_text())
+    assert result['success'] is True and result['exportState'] == 'SUCCEEDED'
+    assert result['publicationState'] == 'LOCAL_READY'
+    assert collector.state == 2
+    points = captured['recorder'].snapshot(console_state=collector.state)[1]
+    assert points['Measurement/terminalState'] == 1
+    assert points['Measurement/consoleState'] == 2
+    assert points['MeasureMemory/deviceStatus'] == 2
+    assert points['MeasurePhase/cleanup/state'] == 2
+
+
+
+def test_failed_entry_clock_keeps_accepted_execution_with_unknown_start_measurements(tmp_path, monkeypatch):
+    request, captured, events = measured_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(managed, 'time', SimpleNamespace(
+        monotonic=lambda: (_ for _ in ()).throw(OSError('entry clock unavailable'))))
+    assert managed.run_managed(request) == 0
+    collector = captured['collector']; collector._thread.join(timeout=3)
+    assert not collector._thread.is_alive()
+    assert 'training' in events and 'package' in events
+    result = json.loads((tmp_path / 'result.json').read_text())
+    assert result['success'] is True and result['publicationState'] == 'LOCAL_READY'
+    assert result['evidence']['peakGpuMemoryBytes'] == 800
+    points = captured['recorder'].snapshot()[1]
+    assert points['MeasurePhase/initialization/state'] == 5
+    assert 'MeasurePhase/initialization/seconds' not in points
+    assert 'Measurement/snapshotElapsedSeconds' not in points
+    assert points['MeasureMemory/deviceStatus'] == 2
+    assert points['MeasureMemory/deviceSampleCount'] >= 1
+    assert 'MeasureMemory/deviceFirstSampleSeconds' not in points
+    assert points['Measurement/terminalState'] == 1
