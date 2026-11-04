@@ -696,3 +696,61 @@ def test_failed_entry_clock_keeps_accepted_execution_with_unknown_start_measurem
     assert points['MeasureMemory/deviceSampleCount'] >= 1
     assert 'MeasureMemory/deviceFirstSampleSeconds' not in points
     assert points['Measurement/terminalState'] == 1
+
+
+def test_measurements_without_experiment_report_observer_not_applicable(tmp_path, monkeypatch):
+    """Missing Runtime disposition must not masquerade as uninstrumented V2."""
+    request, captured, _ = measured_host(tmp_path, monkeypatch)
+    assert managed.run_managed(request) == 0
+    values = captured['recorder'].snapshot()[1]
+    assert values['MeasureObserver/state'] == 4
+    assert 'MeasureObserver/hookCalls' not in values
+    assert 'MeasureObserver/hookSeconds' not in values
+
+
+@pytest.mark.parametrize('fault', ['attach', 'close'])
+def test_runtime_observer_diagnostics_preserve_training_failure_and_known_totals(tmp_path, monkeypatch, fault):
+    from dataclasses import dataclass
+    from types import ModuleType
+
+    request, captured, events = measured_host(tmp_path, monkeypatch, fault='training')
+    spec = {'taskId': managed.TASK, 'configDigest': 'sha256:' + 'b' * 64}
+    monkeypatch.setattr(managed, 'experiment', lambda _: spec)
+    @dataclass
+    class Config:
+        clip_actions: float = 1.
+        num_steps_per_env: int = 7
+    cfg = SimpleNamespace(scene=SimpleNamespace(), curriculum={})
+    class Observer:
+        def _measurement_snapshot(self):
+            return {'MeasureObserver/state': 2, 'MeasureObserver/hookCalls': 2,
+                    'MeasureObserver/hookSeconds': 4.}
+        def close(self):
+            events.append('observer-close')
+            raise OSError('optional close')
+    def attach(*args, version=1, measurements=None):
+        assert measurements is captured['recorder']
+        if fault == 'attach': raise OSError('optional setup')
+        source = Observer()
+        measurements._observer_datum(1, observer=source)
+        return source
+    for name, attributes in {
+        'mjlab_microduck.workbench.engine': {'build_configs': lambda _: (cfg, Config())},
+        'mjlab_microduck.workbench.checkpoints': {'load_teachers': lambda *a: {}},
+        'mjlab_microduck.workbench.observer': {'attach_observer': attach},
+    }.items():
+        module = ModuleType(name); module.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, module)
+    assert managed.run_managed(request) == 1
+    result = json.loads((tmp_path / 'result.json').read_text())
+    assert result['detailCode'] == 'MANAGED_TRAINING_FAILED'
+    assert result['executionState'] == 'FAILED'
+    assert 'training' in events and 'cleanup' in events
+    values = captured['recorder'].snapshot()[1]
+    assert values['MeasureObserver/state'] == 3
+    if fault == 'attach':
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
+    else:
+        assert values['MeasureObserver/hookCalls'] == 2
+        assert values['MeasureObserver/hookSeconds'] == 4

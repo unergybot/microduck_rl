@@ -331,6 +331,7 @@ class Runtime:
             from mjlab_microduck.rom.export_metadata import attach_microduck_metadata
             configure_torch_backends()
             spec = experiment(job)
+            _diagnose(measurements, '_observer_datum', 0 if spec else 4)
             if spec:
                 from mjlab_microduck.workbench.engine import build_configs
                 env_cfg, agent_cfg = build_configs(spec)
@@ -372,8 +373,9 @@ class Runtime:
                     from mjlab_microduck.workbench.observer import attach_observer
                     version = getattr(self, '_observer_version', 1)
                     if version:
-                        observer = attach_observer(env, directory, job, spec, version=version)
-                except Exception: pass
+                        observer = attach_observer(env, directory, job, spec, version=version, measurements=measurements)
+                except Exception:
+                    _diagnose(measurements, '_observer_datum', 3)
             checkpoint = select_resume_checkpoint(job, directory, spec, snapshot=spec is not None)
             load_resume_checkpoint(runner, checkpoint, spec, map_location='cuda:0')
             save = runner.save
@@ -457,7 +459,9 @@ class Runtime:
                     try: close()
                     except BaseException as error:
                         if kind == 'environment': cleanup_error = error
-                        else: diagnostic_cleanup_failed = True
+                        else:
+                            diagnostic_cleanup_failed = True
+                            if kind == 'observer': _diagnose(measurements, '_observer_datum', 3)
             _diagnose(measurements, 'end', 'cleanup', 3 if cleanup_error or diagnostic_cleanup_failed else 2)
             _diagnose(self.collector, 'flush', {})
             if owned_collector: _diagnose(self.collector, 'close')

@@ -72,6 +72,8 @@ class RunMeasurements:
         self.device = {'MeasureMemory/deviceStatus': 0}
         self.torch = {'MeasureMemory/torchStatus': 0}
         self.terminal = 0
+        self._observer = None
+        self._observer_state = 0
 
     def _read_clock(self):
         try: now = finite(self.clock())
@@ -167,13 +169,33 @@ class RunMeasurements:
             values['MeasureMemory/torchStatus'] = 3
         self.torch = values
 
+    def _observer_datum(self, state, *, observer=None):
+        """Private handoff; producer/worker remain the owners of observer facts."""
+        self._observer_state = state
+        if state != 3 or observer is not None:
+            self._observer = observer
+
+    def _observer_snapshot(self):
+        if self._observer is None:
+            return {'MeasureObserver/state': self._observer_state}
+        try:
+            values = self._observer._measurement_snapshot()
+            if values.get('MeasureObserver/state') == 3: self._observer_state = 3
+            if self._observer_state == 3: values['MeasureObserver/state'] = 3
+            return values
+        except Exception:
+            # Incomplete accounting cannot erase an already observed failure.
+            if self._observer_state != 3: self._observer_state = 5
+            self._observer = None
+            return {'MeasureObserver/state': self._observer_state}
+
     def snapshot(self, *, console_state=0, dropped=0):
         now = self._read_clock()
         if now is None:
             for name in self._open: self._partial(name)
         values = {'Measurement/version': 1,
                   'Measurement/terminalState': self.terminal, 'Measurement/consoleState': console_state,
-                  'Measurement/droppedPoints': dropped, 'MeasureObserver/state': 0,
+                  'Measurement/droppedPoints': dropped, **self._observer_snapshot(),
                   'MeasureCheckpoint/calls': self.calls, **self.device, **self.torch}
         if now is not None and self.started is not None:
             values['Measurement/snapshotElapsedSeconds'] = now - self.started

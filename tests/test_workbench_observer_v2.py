@@ -788,10 +788,16 @@ def test_legacy_default_ignores_job_opt_in_and_preserves_payload_bytes(
         trainingWorkbenchReadV2=release()["trainingWorkbenchReadV2"],
     )
     monkeypatch.setattr(observers.time, "time", lambda: 123.0)
-    observer = observers.attach_observer(env, tmp_path, job, SPEC)
+    from mjlab_microduck.training_console import RunMeasurements
+    recorder = RunMeasurements(job)
+    observer = observers.attach_observer(env, tmp_path, job, SPEC, measurements=recorder)
     observer.clock = lambda: 7.0
     try:
         assert type(observer) is observers.LatestObserver
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 0
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
         assert env.step(None) is result
         wait_until(lambda: (tmp_path / "observer/latest.json").exists())
         expected_geometry = {
@@ -910,8 +916,10 @@ def test_runtime_handoff_uses_only_image_selection_and_preserves_training(
             }
         )
         value["experimentJson"] = canonical_json(spec)
+    from mjlab_microduck.training_console import RunMeasurements
+    recorder = RunMeasurements(value)
     original = copy.deepcopy(value)
-    events, selected = [], []
+    events, selected, handles = [], [], []
 
     @dataclass
     class AgentConfig:
@@ -961,8 +969,9 @@ def test_runtime_handoff_uses_only_image_selection_and_preserves_training(
     monkeypatch.setattr(engine, "build_configs", lambda _: (cfg, AgentConfig()))
     monkeypatch.setattr(checkpoints, "load_teachers", lambda *a: {})
 
-    def attach(*args, version=1):
+    def attach(*args, version=1, measurements=None):
         selected.append(version)
+        handles.append(measurements)
         return SimpleNamespace(close=lambda: events.append("observer-close"))
 
     monkeypatch.setattr(observers, "attach_observer", attach)
@@ -974,8 +983,14 @@ def test_runtime_handoff_uses_only_image_selection_and_preserves_training(
             return {}
 
     with pytest.raises(RuntimeError, match="authoritative learn stop"):
-        Runtime().execute(value, tmp_path)
+        Runtime(measurements=recorder).execute(value, tmp_path)
     assert selected == expected
+    assert handles == [recorder] * len(expected)
+    if version == 0 or not experiment_job:
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == (0 if experiment_job else 4)
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
     assert events == ["learn"] + (["observer-close"] if expected else []) + [
         "env-close"
     ]
@@ -1125,3 +1140,218 @@ def test_thread_start_failure_restores_original_step(env, tmp_path, monkeypatch)
         observers.attach_observer(env, tmp_path, JOB, SPEC, version=2)
     assert env.step is step
     assert not (tmp_path / "observer").exists()
+
+
+def test_measured_hooks_exclude_step_and_include_throttle_and_busy_skip(env, tmp_path):
+    """Counting captures instead of completed hooks loses throttle/busy coverage."""
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    hook_time = [0.]
+    observer._hook_clock = lambda: hook_time[0]
+    observer.clock = lambda: 1.
+    original_sample = observer.sample
+    def sample():
+        original_sample()
+        hook_time[0] += .25
+    observer.sample = sample
+    try:
+        assert env.step(None) is env.result
+        assert env.step(None) is env.result  # throttle
+        observer.next_at = 0.
+        held, release_lock = threading.Event(), threading.Event()
+        def hold():
+            with observer.condition:
+                held.set(); release_lock.wait(2)
+        thread = threading.Thread(target=hold)
+        thread.start()
+        try:
+            assert held.wait(1)
+            assert env.step(None) is env.result  # nonblocking admission skip
+        finally:
+            release_lock.set(); thread.join(2)
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/hookCalls'] == 3
+        assert values['MeasureObserver/hookSeconds'] == .75
+        assert values['MeasureObserver/state'] == 1
+    finally:
+        observer.close(); observer.thread.join(2)
+    assert recorder.snapshot()[1]['MeasureObserver/state'] == 2
+
+
+@pytest.mark.parametrize('fault', ['raise', 'nan', 'regression'])
+def test_hook_clock_loss_keeps_matching_partial_coverage_without_later_charge(env, tmp_path, fault):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    observer.sample = lambda: None
+    readings = iter([10., 12., 20., RuntimeError('clock') if fault == 'raise' else float('nan') if fault == 'nan' else 19., 100., 102.])
+    def clock():
+        value = next(readings)
+        if isinstance(value, Exception): raise value
+        return value
+    observer._hook_clock = clock
+    try:
+        for _ in range(3): assert env.step(None) is env.result
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/hookCalls'] == 2
+        assert values['MeasureObserver/hookSeconds'] == 4
+        assert values['MeasureObserver/state'] == 5
+    finally:
+        observer.close(); observer.thread.join(2)
+    assert recorder.snapshot()[1]['MeasureObserver/state'] == 5
+
+
+def test_step_cost_and_original_exception_are_outside_completed_hooks(env, tmp_path):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    clock = [0.]
+    failure = RuntimeError('authoritative step')
+    def step(fail=False):
+        clock[0] += 100.
+        if fail: raise failure
+        return env.result
+    env.step = step
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    observer._hook_clock = lambda: clock[0]
+    observer.sample = lambda: clock.__setitem__(0, clock[0] + 2.)
+    try:
+        assert env.step() is env.result
+        with pytest.raises(RuntimeError) as caught: env.step(True)
+        assert caught.value is failure
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/hookCalls'] == 1
+        assert values['MeasureObserver/hookSeconds'] == 2
+    finally:
+        observer.close(); observer.thread.join(2)
+
+
+@pytest.mark.parametrize('fault', ['producer', 'worker'])
+def test_observed_failure_survives_clean_close(env, tmp_path, monkeypatch, fault):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    def fail(*_, **__): raise OSError('optional')
+    if fault == 'producer': monkeypatch.setattr(observers._SelectedTransfer, 'capture', fail)
+    else: monkeypatch.setattr(observers.ProjectedObserver, '_write', fail)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    try:
+        assert env.step(None) is env.result
+        wait_until(lambda: not observer.thread.is_alive())
+    finally:
+        observer.close(); observer.thread.join(2)
+    assert recorder.snapshot()[1]['MeasureObserver/state'] == 3
+
+
+def test_blocked_close_is_sticky_partial_after_worker_ends(env, tmp_path, monkeypatch):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    entered, release_worker = threading.Event(), threading.Event()
+    def write(*_):
+        entered.set(); assert release_worker.wait(3)
+    monkeypatch.setattr(observers.ProjectedObserver, '_write', write)
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    try:
+        assert entered.wait(1)
+        start = time.monotonic(); observer.close()
+        assert time.monotonic() - start < .25
+        assert recorder.snapshot()[1]['MeasureObserver/state'] == 5
+    finally:
+        release_worker.set(); observer.thread.join(2); observer.close()
+    assert recorder.snapshot()[1]['MeasureObserver/state'] == 5
+
+
+def test_optional_publisher_and_uncompleted_hook_cannot_change_step(env, tmp_path):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    class BrokenPublisher(RunMeasurements):
+        def _observer_datum(self, *args, **kwargs): raise RuntimeError('publisher')
+    recorder = BrokenPublisher(JOB)
+    original_step = env.step
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    try:
+        assert env.step(None) is env.result
+    finally:
+        observer.close(); observer.thread.join(2)
+    env.step = original_step
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    observer.sample = lambda: (_ for _ in ()).throw(RuntimeError('uncompleted'))
+    try:
+        assert env.step(None) is env.result
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 3
+        assert values['MeasureObserver/hookCalls'] == 0
+        assert values['MeasureObserver/hookSeconds'] == 0
+    finally:
+        observer.close(); observer.thread.join(2)
+
+
+@pytest.mark.parametrize('fault', ['start', 'end', 'nonfinite', 'regression'])
+def test_first_hook_clock_loss_is_unknown_not_a_measured_zero(env, tmp_path, fault):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    observer.sample = lambda: None
+    bad = RuntimeError('clock')
+    readings = iter([bad, 12.] if fault == 'start' else [10., bad] if fault == 'end'
+                    else [10., float('inf')] if fault == 'nonfinite' else [10., 9.])
+    def clock():
+        value = next(readings)
+        if isinstance(value, Exception): raise value
+        return value
+    observer._hook_clock = clock
+    try:
+        assert env.step(None) is env.result
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 5
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
+        # An unrelated later snapshot cannot invent elapsed hook residence.
+        observer._hook_clock = lambda: 100.
+        later = recorder.snapshot()[1]
+        assert later['MeasureObserver/state'] == 5
+        assert 'MeasureObserver/hookSeconds' not in later
+    finally:
+        observer.close(); observer.thread.join(2)
+
+
+def test_attach_failure_is_unknown_and_preserves_original_failure(env, tmp_path, monkeypatch):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    failure = MemoryError('attach')
+    def fail(*_, **__): raise failure
+    monkeypatch.setattr(observers._SelectedTransfer, '__init__', fail)
+    step = env.step
+    with pytest.raises(MemoryError) as caught:
+        observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    assert caught.value is failure and env.step is step
+    values = recorder.snapshot()[1]
+    assert values['MeasureObserver/state'] == 3
+    assert 'MeasureObserver/hookCalls' not in values
+    assert 'MeasureObserver/hookSeconds' not in values
+
+
+def test_equal_hook_clocks_are_observed_zero_after_successful_instrumentation(env, tmp_path):
+    from mjlab_microduck.training_console import RunMeasurements
+
+    recorder = RunMeasurements(JOB)
+    observer = observers.attach_observer(env, tmp_path, JOB, SPEC, version=2, measurements=recorder)
+    observer._hook_clock = lambda: 7.
+    observer.sample = lambda: None
+    try:
+        initial = recorder.snapshot()[1]
+        assert initial['MeasureObserver/hookCalls'] == 0
+        assert initial['MeasureObserver/hookSeconds'] == 0
+        assert env.step(None) is env.result
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/hookCalls'] == 1
+        assert values['MeasureObserver/hookSeconds'] == 0
+    finally:
+        observer.close(); observer.thread.join(2)

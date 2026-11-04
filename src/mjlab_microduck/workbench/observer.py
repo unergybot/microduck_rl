@@ -1,5 +1,6 @@
 """Optional actual-environment snapshots, one pending frame, no control authority."""
 import json
+import math
 import os
 import threading
 import time
@@ -62,7 +63,25 @@ class LatestObserver:
         self.thread.join(timeout=.1)
 
 
-def attach_observer(env,directory,job,spec,*,version=1):
+def attach_observer(env,directory,job,spec,*,version=1,measurements=None):
+    try:
+        observer = _attach_observer(env, directory, job, spec, version=version)
+    except Exception:
+        try:
+            if measurements is not None: measurements._observer_datum(3)
+        except Exception: pass  # Optional publication cannot mask the attach failure.
+        raise
+    if version == 2 and measurements is not None:
+        observer._hook_instrumented = True
+    try:
+        if measurements is not None:
+            measurements._observer_datum(1 if version == 2 else 0,
+                                         observer=observer if version == 2 else None)
+    except Exception: pass  # Optional publication cannot change the installed hook.
+    return observer
+
+
+def _attach_observer(env,directory,job,spec,*,version=1):
     if type(version) is not int or version not in (1, 2):
         raise ValueError('OBSERVER_VERSION_UNSUPPORTED')
     if version == 2:
@@ -70,7 +89,10 @@ def attach_observer(env,directory,job,spec,*,version=1):
         observer = ProjectedObserver(env, directory, job, spec, _start=False)
         def projected_step(*args, **kwargs):
             result = step(*args, **kwargs)
-            observer.sample()  # Optional producer contains its own failures.
+            if observer._hook_instrumented:
+                observer._measured_sample()
+            else:
+                observer.sample()  # Optional producer contains its own failures.
             return result
         # Install the hook before starting a worker that could block on disk.
         env.step = projected_step
@@ -231,6 +253,15 @@ class ProjectedObserver:
 
         self.env = env
         self.clock = clock
+        self._hook_clock = time.monotonic
+        self._last_hook_clock = None
+        self._hook_instrumented = False
+        self._hooks = (0, 0.)  # One immutable, matching count/time producer snapshot.
+        self._producer_failed = False
+        self._worker_failed = False
+        self._hook_partial = False
+        self._close_partial = False
+        self._closed = False
         self.wall_clock = wall_clock
         self.next_at = float("-inf")
         self.sequence = 0
@@ -302,6 +333,49 @@ class ProjectedObserver:
         finally:
             os.close(fd)
 
+    def _read_hook_clock(self):
+        try:
+            value = self._hook_clock()
+            if (type(value) not in (int, float) or not math.isfinite(value)
+                    or self._last_hook_clock is not None and value < self._last_hook_clock):
+                return None
+            self._last_hook_clock = value
+            return value
+        except Exception:
+            return None
+
+    def _measured_sample(self):
+        # Completed-hook host residence only: begins AFTER the original step.
+        # Excludes worker GPU waits/packing/IO and final datum publication.
+        start = self._read_hook_clock()
+        try:
+            self.sample()
+        except Exception:
+            self._producer_failed = True
+            self.stopped.set()
+            return
+        end = self._read_hook_clock()
+        if start is None or end is None:
+            self._hook_partial = True
+            return
+        calls, seconds = self._hooks
+        total = seconds + (end - start)
+        if not math.isfinite(total):
+            self._hook_partial = True
+            return
+        self._hooks = (calls + 1, total)
+
+    def _measurement_snapshot(self):
+        calls, seconds = self._hooks
+        state = (3 if self._producer_failed or self._worker_failed else
+                 5 if self._hook_partial or self._close_partial else
+                 2 if self._closed and not self.thread.is_alive() else 1)
+        values = {'MeasureObserver/state': state}
+        if calls or not self._hook_partial:
+            values.update({'MeasureObserver/hookCalls': calls,
+                           'MeasureObserver/hookSeconds': seconds})
+        return values
+
     def sample(self):
         # Even allocation/copy/clock errors are optional; the step result survives.
         try:
@@ -334,11 +408,13 @@ class ProjectedObserver:
                     slot["transfer"].capture(data.geom_xpos, data.geom_xmat)
                     self.sequence += 1
                 except Exception:  # noqa: BLE001 -- Optional observer must never fail PPO.
+                    self._producer_failed = True
                     self.stopped.set()
                 self.condition.notify()
             finally:
                 self.condition.release()
         except Exception:  # noqa: BLE001 -- Optional observer must never fail PPO.
+            self._producer_failed = True
             self.stopped.set()
 
     def consume(self):
@@ -350,6 +426,7 @@ class ProjectedObserver:
             else:
                 self.geometry_sink(json.loads(self.geometry_bytes))
         except Exception:  # noqa: BLE001 -- Optional observer must never fail PPO.
+            self._worker_failed = True
             self.stopped.set()
         while True:
             with self.condition:
@@ -384,6 +461,7 @@ class ProjectedObserver:
                     else:
                         self.sink(frame)
             except Exception:  # noqa: BLE001 -- Optional observer must never fail PPO.
+                self._worker_failed = True
                 self.stopped.set()
             finally:
                 # Release completed encodings before admitting reuse of this slot.
@@ -396,3 +474,5 @@ class ProjectedObserver:
         # No condition lock or GPU fence on caller. Worker polls stop if idle.
         if self.thread.ident is not None:
             self.thread.join(timeout=0.1)
+        self._closed = True
+        if self.thread.is_alive(): self._close_partial = True

@@ -418,3 +418,89 @@ def test_invalid_clock_values_are_unknown_instead_of_zero_or_negative_residence(
     assert values['MeasureCheckpoint/calls'] == 1
     assert values['MeasurePhase/checkpoint/state'] == 5
     assert 'MeasurePhase/checkpoint/seconds' not in values
+
+
+def test_observer_close_failure_keeps_observed_matching_totals_and_failure_state():
+    module = console()
+    recorder = module.RunMeasurements(JOB)
+    source = SimpleNamespace(_measurement_snapshot=lambda: {
+        'MeasureObserver/state': 2, 'MeasureObserver/hookCalls': 2,
+        'MeasureObserver/hookSeconds': 4.,
+    })
+    recorder._observer_datum(1, observer=source)
+    recorder._observer_datum(3)
+    values = recorder.snapshot()[1]
+    assert values['MeasureObserver/state'] == 3
+    assert values['MeasureObserver/hookCalls'] == 2
+    assert values['MeasureObserver/hookSeconds'] == 4
+    assert recorder.device == {'MeasureMemory/deviceStatus': 0}
+    assert recorder.torch == {'MeasureMemory/torchStatus': 0}
+    assert set(values) <= EXPECTED_KEYS
+
+
+def test_observer_snapshot_error_is_optional_and_sticky_incomplete():
+    module = console()
+    recorder = module.RunMeasurements(JOB)
+    queries = []
+    def fail():
+        queries.append(1)
+        raise RuntimeError('optional snapshot')
+    source = SimpleNamespace(_measurement_snapshot=fail)
+    recorder._observer_datum(1, observer=source)
+    for _ in range(2):
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 5
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
+    assert len(queries) == 1  # A broken source is detached rather than retried.
+
+
+@pytest.mark.parametrize('failure_channel', ['datum', 'source'])
+def test_known_observer_failure_survives_snapshot_error_and_source_detachment(failure_channel):
+    module = console()
+    recorder = module.RunMeasurements(JOB)
+    queries = []
+    broken = [False]
+    def snapshot():
+        queries.append(1)
+        if broken[0]:
+            raise OSError('optional snapshot after observed failure')
+        return {'MeasureObserver/state': 3 if failure_channel == 'source' else 2,
+                'MeasureObserver/hookCalls': 2, 'MeasureObserver/hookSeconds': 4.}
+    source = SimpleNamespace(_measurement_snapshot=snapshot)
+    recorder._observer_datum(1, observer=source)
+    if failure_channel == 'datum':
+        recorder._observer_datum(3)
+    observed = recorder.snapshot()[1]
+    assert observed['MeasureObserver/state'] == 3
+    assert observed['MeasureObserver/hookCalls'] == 2
+    assert observed['MeasureObserver/hookSeconds'] == 4
+    broken[0] = True
+    for _ in range(3):
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 3
+        assert 'MeasureObserver/hookCalls' not in values
+        assert 'MeasureObserver/hookSeconds' not in values
+        broken[0] = False  # Detached sources must stay detached after recovery.
+    assert len(queries) == 2
+
+
+@pytest.mark.parametrize('failure_channel', ['datum', 'source'])
+def test_known_observer_failure_survives_later_clean_source_snapshot(failure_channel):
+    module = console()
+    recorder = module.RunMeasurements(JOB)
+    state = [3 if failure_channel == 'source' else 1]
+    source = SimpleNamespace(_measurement_snapshot=lambda: {
+        'MeasureObserver/state': state[0], 'MeasureObserver/hookCalls': 1,
+        'MeasureObserver/hookSeconds': 2.,
+    })
+    recorder._observer_datum(1, observer=source)
+    if failure_channel == 'datum':
+        recorder._observer_datum(3)
+    assert recorder.snapshot()[1]['MeasureObserver/state'] == 3
+    state[0] = 2
+    for _ in range(2):
+        values = recorder.snapshot()[1]
+        assert values['MeasureObserver/state'] == 3
+        assert values['MeasureObserver/hookCalls'] == 1
+        assert values['MeasureObserver/hookSeconds'] == 2
