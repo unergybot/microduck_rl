@@ -28,15 +28,27 @@ def vector(value,size,limit):
 
 
 def command_schema(spec):
-    profile=verify_experiment(spec)['commandProfile']
-    return dict(twistSemantics=profile['twistSemantics'],twist=dict(dimensions=3,editable=profile['twistSemantics'] not in _AUTONOMOUS,ranges=deepcopy(profile['twistRanges'])),head_pose=dict(dimensions=4,editable=True,ranges=deepcopy(profile['headPoseRanges'])),body_pose=dict(dimensions=6,editable=True,ranges=deepcopy(profile['bodyPoseRanges'])))
+    from .engine import build_configs
+    spec=verify_experiment(spec)
+    cfg,_=build_configs(spec)
+    return _command_schema(spec,{name for name,term in cfg.commands.items() if term is not None})
+
+
+def _command_schema(spec,terms):
+    profile=spec['commandProfile']
+    return dict(twistSemantics=profile['twistSemantics'],twist=dict(dimensions=3,editable='twist' in terms and profile['twistSemantics'] not in _AUTONOMOUS,ranges=deepcopy(profile['twistRanges'])),head_pose=dict(dimensions=4,editable='head_pose' in terms,ranges=deepcopy(profile['headPoseRanges'])),body_pose=dict(dimensions=6,editable='body_pose' in terms,ranges=deepcopy(profile['bodyPoseRanges'])))
 
 
 def validate_commands(spec,commands):
+    return _validate_commands(commands,command_schema(spec))
+
+
+def _validate_commands(commands,schema):
     require(type(commands) is dict and not commands.keys()-{'twist','head_pose','body_pose'})
-    schema=command_schema(spec);result={}
+    result={}
     for name,value in commands.items():
-        field=schema[name];require(field['editable'],'EVALUATION_AUTONOMOUS_COMMAND')
+        field=schema[name]
+        require(field['editable'],'EVALUATION_AUTONOMOUS_COMMAND' if name=='twist' and schema['twistSemantics'] in _AUTONOMOUS else 'EVALUATION_COMMAND_UNSUPPORTED')
         value=vector(value,field['dimensions'],1000)
         require(all(lo<=v<=hi for v,(lo,hi) in zip(value,field['ranges'])),'EVALUATION_COMMAND_OUTSIDE_ENVELOPE')
         if name=='twist' and schema['twistSemantics']=='sit-stand-vx-flag':require(value[0] in (0,1) and value[1:]==[0,0])
@@ -73,6 +85,7 @@ class EvaluationSession:
         self.env=ManagerBasedRlEnv(cfg=cfg,device='cpu')
         try:
             require(abs(self.env.step_dt-.02)<1e-8,'EVALUATION_CONTROL_RATE_INVALID')
+            self._command_schema=_command_schema(self.spec,self.env.command_manager.active_terms)
             self._hold_commands()
             self._geometry=self._make_geometry()
             self.bytes=self._size(self._payload())+_FAILURE_RESERVE
@@ -132,7 +145,7 @@ class EvaluationSession:
 
     def status(self,identity):
         self._authorize(identity,allow_closed=True)
-        return dict(**self.identity,configDigest=self.spec['configDigest'],mode='INITIAL_MODEL' if self.policy is None else self.policy.kind,closed=self.closed,paused=self.paused,episodeEnded=self.ended,lastControlSequence=self.sequence,episode=self.episode,episodeStep=self.episode_step,totalSteps=self.total_steps,commands=deepcopy(self.commands),commandSchema=command_schema(self.spec),remainingLeaseSeconds=max(0,self.expires-self.clock()),evaluation='NOT_QUALIFIED',executionState='FAILED' if self.failure else 'CLOSED' if self.closed else 'REPLAY_LIMIT' if self.limit_reached else 'OPEN',replayLimitReached=self.limit_reached,failure=deepcopy(self.failure))
+        return dict(**self.identity,configDigest=self.spec['configDigest'],mode='INITIAL_MODEL' if self.policy is None else self.policy.kind,closed=self.closed,paused=self.paused,episodeEnded=self.ended,lastControlSequence=self.sequence,episode=self.episode,episodeStep=self.episode_step,totalSteps=self.total_steps,commands=deepcopy(self.commands),commandSchema=deepcopy(self._command_schema),remainingLeaseSeconds=max(0,self.expires-self.clock()),evaluation='NOT_QUALIFIED',executionState='FAILED' if self.failure else 'CLOSED' if self.closed else 'REPLAY_LIMIT' if self.limit_reached else 'OPEN',replayLimitReached=self.limit_reached,failure=deepcopy(self.failure))
 
     def geometry(self,identity):
         self._authorize(identity);return deepcopy(self._geometry)
@@ -142,7 +155,7 @@ class EvaluationSession:
 
     def _control_parameters(self,action,parameters):
         require(type(parameters) is dict and type(action) is str)
-        if action=='COMMAND':return validate_commands(self.spec,parameters)
+        if action=='COMMAND':return _validate_commands(parameters,self._command_schema)
         if action in ('PAUSE','RUN','RESET'):
             require(not parameters);return {}
         if action=='DISTURB':
