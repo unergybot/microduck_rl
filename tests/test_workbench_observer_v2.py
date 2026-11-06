@@ -58,6 +58,41 @@ def release():
     }
 
 
+def test_native_warp_bridge_publishes_actual_poses_without_copying_full_scene(env, tmp_path):
+    """Native mjlab exposes TorchArray proxies, not bare torch.Tensor objects."""
+    import warp as wp
+    from mjlab.sim.sim_data import WarpBridge
+
+    positions = env.sim.data.geom_xpos.copy()
+    matrices = env.sim.data.geom_xmat.copy()
+    bridge = WarpBridge(SimpleNamespace(
+        geom_xpos=wp.array(positions, dtype=wp.vec3, device="cpu"),
+        geom_xmat=wp.array(matrices, dtype=wp.mat33, device="cpu"),
+    ))
+    env.sim.data = bridge
+    frames = []
+    observer = observers.ProjectedObserver(env, tmp_path, JOB, SPEC, sink=frames.append)
+    try:
+        observer.sample()
+        wait_until(lambda: bool(frames))
+        assert (tmp_path / "observer/geometry.json").exists()
+        p, m = arrays(frames[0])
+        for slot, source in observer.projection.dynamic_mapping:
+            np.testing.assert_allclose(p[:, slot], positions[:9, source])
+            np.testing.assert_allclose(m[:, slot], matrices[:9, source])
+        # Later native updates remain visible; no detached full-scene snapshot.
+        bridge.geom_xpos[:] += 2
+        observer.next_at = 0
+        observer.sample()
+        wait_until(lambda: len(frames) == 2)
+        p, _ = arrays(frames[1])
+        for slot, source in observer.projection.dynamic_mapping:
+            np.testing.assert_allclose(p[:, slot], positions[:9, source] + 2)
+        assert not torch.cuda.is_initialized()
+    finally:
+        observer.close()
+
+
 @pytest.fixture
 def env():
     # Compiled synthetic many-source scene; stub indexing is trusted by this test,
@@ -719,7 +754,12 @@ def test_actual_flat_scene_v2_metadata_only(tmp_path):
         cfg, _ = build_configs(spec)
         scene = Scene(cfg.scene, device="cpu")
         model = scene.compile()
-        root = model.body("robot/trunk_base").id
+        # Use the installed Scene entity's indexing instead of a hand-written
+        # root id: attachment consumes this exact native boundary in training.
+        entity = scene.entities["robot"]
+        indexing = entity._compute_indexing(model, "cpu")
+        root = indexing.root_body_id
+        assert root == model.body("robot/trunk_base").id
         data = mujoco.MjData(model)
         mujoco.mj_kinematics(model, data)
         positions = np.tile(data.geom_xpos, (9, 1, 1))
@@ -732,7 +772,7 @@ def test_actual_flat_scene_v2_metadata_only(tmp_path):
             scene=SimpleNamespace(
                 entities={
                     "robot": SimpleNamespace(
-                        indexing=SimpleNamespace(root_body_id=root)
+                        indexing=indexing
                     )
                 }
             ),

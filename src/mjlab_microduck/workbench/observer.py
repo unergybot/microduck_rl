@@ -144,6 +144,7 @@ class _SelectedTransfer:
         import numpy as np
         import torch
 
+        positions, matrices = self._arrays(positions, matrices)
         self.shapes = (tuple(positions.shape), tuple(matrices.shape))
         self.torch = isinstance(positions, torch.Tensor)
         self.device = positions.device if self.torch else None
@@ -174,6 +175,16 @@ class _SelectedTransfer:
             self.source_index = np.asarray(sources, dtype=np.intp)
             self.buffers = [np.empty(shape, dtype=np.float32) for shape in shapes]
 
+    @staticmethod
+    def _arrays(positions, matrices):
+        from mjlab.sim.sim_data import TorchArray
+
+        # Native WarpBridge fields are proxies, not torch.Tensor instances.
+        # Basic slicing exposes a shared tensor view: no full-scene clone,
+        # host transfer or CUDA synchronization. Keep unknown types rejected.
+        return tuple(value[:] if isinstance(value, TorchArray) else value
+                     for value in (positions, matrices))
+
     def _validate(self, positions, matrices):
         import numpy as np
         import torch
@@ -198,6 +209,7 @@ class _SelectedTransfer:
     def capture(self, positions, matrices):
         import torch
 
+        positions, matrices = self._arrays(positions, matrices)
         self._validate(positions, matrices)
         self.recorded = False
         self.selected = []
