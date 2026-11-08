@@ -754,3 +754,38 @@ def test_runtime_observer_diagnostics_preserve_training_failure_and_known_totals
     else:
         assert values['MeasureObserver/hookCalls'] == 2
         assert values['MeasureObserver/hookSeconds'] == 4
+
+
+@pytest.mark.parametrize('parent', ['', 'retained-train'])
+@pytest.mark.parametrize('bounds', [(1, 1, 1), (64, 5, 600), (64, 10, 600)])
+def test_bounded_shared_train_and_resume_preserve_request(parent, bounds):
+    value = job()
+    value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
+    value.update(kind='TRAIN', parentJobId=parent, numEnvs=bounds[0],
+                 iterations=bounds[1], timeoutSeconds=bounds[2])
+    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    original = json.loads(json.dumps(value))
+    assert managed.validate_request(value) == managed.TASK
+    assert value == original
+
+
+@pytest.mark.parametrize('patch', [{'numEnvs': 65}, {'iterations': 11}, {'timeoutSeconds': 601}])
+def test_bounded_shared_train_rejects_profile_overflow(patch):
+    value = job()
+    value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
+    value.update(kind='TRAIN', **patch)
+    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    with pytest.raises(ValueError, match='MANAGED_SHARED_ENVELOPE_EXCEEDED'):
+        managed.validate_request(value)
+
+
+@pytest.mark.parametrize('patch', [{'normalEnabled': False}, {'normalEnabled': 1},
+    {'maxEnvs': 4096}, {'maxIterations': 20000}, {'maxEnvs': '64'}, {'maxIterations': 10.0}])
+def test_bounded_shared_train_requires_exact_opt_in_limits(patch):
+    value = job()
+    value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
+    value['kind'] = 'TRAIN'
+    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    value['limits'].update(patch)
+    with pytest.raises(ValueError, match='MANAGED_SHARED_COMMISSION_REQUIRED'):
+        managed.validate_request(value)
