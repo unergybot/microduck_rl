@@ -103,12 +103,18 @@ def test_unknown_sharing_mode_fails_closed(mode):
         managed.validate_request(value)
 
 
-def test_shared_desktop_rejects_train_even_with_enabled_normal_envelope():
-    value = job(); value['scope']['gpuSharingMode'] = 'SHARED_DESKTOP'
-    value['kind'] = 'TRAIN'
-    value['limits'].update(normalEnabled=True, maxEnvs=4096, maxIterations=20000)
-    with pytest.raises(ValueError, match='MANAGED_SHARED_COMMISSION_REQUIRED'):
-        managed.validate_request(value)
+@pytest.mark.parametrize('mode', ['SHARED_DESKTOP', 'SHARED_WORKLOADS'])
+def test_shared_training_uses_the_published_envelope(mode):
+    value = job(); value['scope']['gpuSharingMode'] = mode
+    value.update(kind='TRAIN', iterations=20)
+    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=1000)
+    original = json.loads(json.dumps(value))
+    assert managed.validate_request(value) == managed.TASK
+    assert value == original
+    for patch in ({'numEnvs':65}, {'iterations':1001}):
+        outside = json.loads(json.dumps(value)); outside.update(patch)
+        with pytest.raises(ValueError, match='MANAGED_ENVELOPE_EXCEEDED'):
+            managed.validate_request(outside)
 
 
 @pytest.mark.parametrize('mode', [None, '', 'EXCLUSIVE'])
@@ -301,10 +307,11 @@ def test_workload_preflight_retains_shared_memory_reserve(preflight_host, free):
     value,host=preflight_host;value['scope']['gpuSharingMode']='SHARED_WORKLOADS';host['free']=free
     with pytest.raises(ValueError,match='MANAGED_GPU_MEMORY_INSUFFICIENT'):managed.Runtime().preflight(value)
 
-def test_workload_sharing_never_enables_normal_training():
-    value=job();value['scope']['gpuSharingMode']='SHARED_WORKLOADS';value['kind']='TRAIN'
-    value['limits'].update(normalEnabled=True,maxEnvs=4096,maxIterations=20000)
-    with pytest.raises(ValueError,match='MANAGED_SHARED_COMMISSION_REQUIRED'):managed.validate_request(value)
+@pytest.mark.parametrize('mode', ['SHARED_DESKTOP', 'SHARED_WORKLOADS'])
+def test_shared_training_requires_an_enabled_envelope(mode):
+    value=job();value['scope']['gpuSharingMode']=mode;value['kind']='TRAIN'
+    value['limits'].update(normalEnabled=False,maxEnvs=64,maxIterations=1000)
+    with pytest.raises(ValueError,match='MANAGED_ENVELOPE_EXCEEDED'):managed.validate_request(value)
 
 
 @pytest.mark.parametrize('diagnostics', ['missing_digest', 'import_failure', 'setup_failure'])
@@ -769,23 +776,31 @@ def test_bounded_shared_train_and_resume_preserve_request(parent, bounds):
     assert value == original
 
 
-@pytest.mark.parametrize('patch', [{'numEnvs': 65}, {'iterations': 11}, {'timeoutSeconds': 601}])
+@pytest.mark.parametrize('patch', [{'numEnvs': 65}, {'iterations': 11}])
 def test_bounded_shared_train_rejects_profile_overflow(patch):
     value = job()
     value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
     value.update(kind='TRAIN', **patch)
     value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
-    with pytest.raises(ValueError, match='MANAGED_SHARED_ENVELOPE_EXCEEDED'):
+    with pytest.raises(ValueError, match='MANAGED_ENVELOPE_EXCEEDED'):
         managed.validate_request(value)
 
 
-@pytest.mark.parametrize('patch', [{'normalEnabled': False}, {'normalEnabled': 1},
-    {'maxEnvs': 4096}, {'maxIterations': 20000}, {'maxEnvs': '64'}, {'maxIterations': 10.0}])
-def test_bounded_shared_train_requires_exact_opt_in_limits(patch):
+@pytest.mark.parametrize('enabled', [False, 1])
+def test_shared_training_still_requires_explicit_normal_enablement(enabled):
     value = job()
     value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
     value['kind'] = 'TRAIN'
-    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
-    value['limits'].update(patch)
-    with pytest.raises(ValueError, match='MANAGED_SHARED_COMMISSION_REQUIRED'):
+    value['limits'].update(normalEnabled=enabled, maxEnvs=64, maxIterations=10)
+    with pytest.raises(ValueError, match='MANAGED_ENVELOPE_EXCEEDED'):
         managed.validate_request(value)
+
+
+def test_shared_timeout_is_the_supplied_execution_budget_not_a_literal_profile():
+    value = job()
+    value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
+    value.update(kind='TRAIN', timeoutSeconds=601)
+    value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    original = json.loads(json.dumps(value))
+    assert managed.validate_request(value) == managed.TASK
+    assert value == original
