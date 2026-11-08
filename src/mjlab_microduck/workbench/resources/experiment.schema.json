@@ -1,0 +1,923 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "ROM_TRAINING_EXPERIMENT_V1"
+    },
+    "recipeId": {
+      "enum": [
+        "Mjlab-VelStand-Flat-MicroDuck",
+        "Mjlab-VelStand-Flat-Backlash-MicroDuck",
+        "Mjlab-VelStand-Rough-MicroDuck",
+        "Mjlab-VelStand-Rough-Backlash-MicroDuck",
+        "Mjlab-SitStand-Flat-MicroDuck",
+        "Mjlab-SitStand-Flat-Backlash-MicroDuck",
+        "Mjlab-SitStand-Rough-MicroDuck",
+        "Mjlab-SitStand-Rough-Backlash-MicroDuck",
+        "Mjlab-GroundPick-Flat-MicroDuck",
+        "Mjlab-GroundPick-Flat-Backlash-MicroDuck",
+        "Mjlab-GroundPick-Rough-MicroDuck",
+        "Mjlab-GroundPick-Rough-Backlash-MicroDuck",
+        "Mjlab-BallKickLeft-Flat-MicroDuck",
+        "Mjlab-BallKickLeft-Flat-Backlash-MicroDuck",
+        "Mjlab-BallKick-Flat-MicroDuck",
+        "Mjlab-BallKick-Flat-Backlash-MicroDuck",
+        "Mjlab-Roulade-Flat-MicroDuck",
+        "Mjlab-Velocity-Flat-MicroDuck",
+        "Mjlab-Velocity-Flat-Backlash-MicroDuck",
+        "Mjlab-Velocity-Rough-MicroDuck",
+        "Mjlab-Velocity-Rough-Backlash-MicroDuck",
+        "Mjlab-StandUp-Flat-MicroDuck",
+        "Mjlab-StandUp-Flat-Backlash-MicroDuck",
+        "Mjlab-StandUp-Rough-MicroDuck",
+        "Mjlab-StandUp-Rough-Backlash-MicroDuck",
+        "Mjlab-Velocity-Flat-MicroDuck-Rollers",
+        "Mjlab-Velocity-Flat-Backlash-MicroDuck-Rollers",
+        "Mjlab-RollerCrouch-Flat-MicroDuck",
+        "Mjlab-RollerCrouch-Flat-Backlash-MicroDuck",
+        "Mjlab-Velocity-Swizzle-MicroDuck",
+        "Mjlab-Velocity-Swizzle-Backlash-MicroDuck",
+        "Mjlab-RollerSlope-Flat-MicroDuck",
+        "Mjlab-RollerSlope-Flat-Backlash-MicroDuck",
+        "Mjlab-RollerStandUp-Flat-MicroDuck",
+        "Mjlab-Spin-Flat-MicroDuck"
+      ]
+    },
+    "robotProfileId": {
+      "enum": [
+        "rom-xl330-v1",
+        "hd1910-reference-v1"
+      ]
+    },
+    "catalogRevision": {
+      "const": "microduck-workbench-v1"
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^Mjlab-[A-Za-z0-9-]{1,100}$"
+    },
+    "actionId": {
+      "enum": [
+        "joint",
+        "sitstand",
+        "ground_pick",
+        "kick_left",
+        "kick_right",
+        "roulade",
+        "walk",
+        "stand",
+        "roller",
+        "crouch",
+        "swizzle",
+        "slope",
+        "roller_stand",
+        "spin"
+      ]
+    },
+    "terrain": {
+      "enum": [
+        "flat",
+        "rough",
+        "slope"
+      ]
+    },
+    "backlash": {
+      "type": "boolean"
+    },
+    "factoryOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kick_foot": {
+          "const": "left"
+        }
+      },
+      "required": []
+    },
+    "commandProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z_]+-v1$"
+        },
+        "twistSemantics": {
+          "enum": [
+            "passive-balance",
+            "bidirectional-propulsion-heading-error",
+            "propulsion-brake-heading-error",
+            "sit-stand-vx-flag",
+            "phase-clock",
+            "autonomous-maneuver",
+            "body-velocity"
+          ]
+        },
+        "twistRanges": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            }
+          }
+        },
+        "headPoseRanges": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            }
+          }
+        },
+        "bodyPoseRanges": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            }
+          }
+        },
+        "phasePeriodSeconds": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 120
+        }
+      },
+      "required": [
+        "id",
+        "twistSemantics",
+        "twistRanges",
+        "headPoseRanges",
+        "bodyPoseRanges"
+      ]
+    },
+    "teacherRequirements": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "enum": [
+              "walk",
+              "stand"
+            ]
+          },
+          "recipeId": {
+            "type": "string",
+            "pattern": "^Mjlab-[A-Za-z0-9-]{1,100}$"
+          },
+          "robotProfileId": {
+            "enum": [
+              "rom-xl330-v1",
+              "hd1910-reference-v1"
+            ]
+          }
+        },
+        "required": [
+          "actionId",
+          "recipeId",
+          "robotProfileId"
+        ]
+      }
+    },
+    "requestedConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "numEnvs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "numStepsPerEnv": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 128
+        },
+        "learningRate": {
+          "type": "number",
+          "minimum": 1e-06,
+          "maximum": 0.01
+        },
+        "episodeLengthSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "actionScale": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 2
+        },
+        "rewards": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "curriculum": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "observations": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "events": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "physics": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "calibration": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "commands": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "ppo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gamma": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "lam": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "clipParam": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 0.5
+            },
+            "entropyCoef": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "valueLossCoef": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "desiredKl": {
+              "type": "number",
+              "minimum": 1e-05,
+              "maximum": 1
+            },
+            "maxGradNorm": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 10
+            },
+            "numLearningEpochs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "numMiniBatches": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          }
+        },
+        "gains": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kpFirmware": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "voltageMinimum": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "delayMinLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "delayMaxLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actorHiddenDims": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 1024
+              }
+            },
+            "criticHiddenDims": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 1024
+              }
+            },
+            "activation": {
+              "enum": [
+                "elu",
+                "relu",
+                "tanh"
+              ]
+            },
+            "initialStd": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 5
+            }
+          }
+        },
+        "teacherCheckpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "walk": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "pattern": "^[-A-Za-z0-9_]{1,80}$"
+                },
+                "checkpointSha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "configDigest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "jobId",
+                "checkpointSha256",
+                "configDigest"
+              ]
+            },
+            "stand": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "pattern": "^[-A-Za-z0-9_]{1,80}$"
+                },
+                "checkpointSha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "configDigest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "jobId",
+                "checkpointSha256",
+                "configDigest"
+              ]
+            }
+          }
+        }
+      },
+      "required": []
+    },
+    "effectiveConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "numEnvs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "numStepsPerEnv": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 128
+        },
+        "learningRate": {
+          "type": "number",
+          "minimum": 1e-06,
+          "maximum": 0.01
+        },
+        "episodeLengthSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "actionScale": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 2
+        },
+        "servo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "motorName": {
+              "enum": [
+                "xl330",
+                "hd1910"
+              ]
+            },
+            "model": {
+              "const": "m6"
+            },
+            "parameterAsset": {
+              "enum": [
+                "bam:xl330/m6.json",
+                "hd1910_m6.json"
+              ]
+            },
+            "parameterDigest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "kpFirmware": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "voltageRange": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 12
+              }
+            },
+            "voltageDropGainRange": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "voltageMinimum": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "delayMinLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "delayMaxLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          },
+          "required": [
+            "motorName",
+            "model",
+            "parameterAsset",
+            "parameterDigest",
+            "kpFirmware",
+            "voltageRange",
+            "voltageDropGainRange",
+            "voltageMinimum",
+            "delayMinLag",
+            "delayMaxLag"
+          ]
+        },
+        "actionFilter": {
+          "const": "NONE"
+        },
+        "controlFrequencyHz": {
+          "const": 50
+        },
+        "normalizeObservations": {
+          "const": true
+        },
+        "rewards": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "curriculum": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "observations": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "events": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "physics": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "calibration": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "commands": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        "ppo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gamma": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "lam": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "clipParam": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 0.5
+            },
+            "entropyCoef": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "valueLossCoef": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "desiredKl": {
+              "type": "number",
+              "minimum": 1e-05,
+              "maximum": 1
+            },
+            "maxGradNorm": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 10
+            },
+            "numLearningEpochs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "numMiniBatches": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          }
+        },
+        "gains": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kpFirmware": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "voltageMinimum": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "delayMinLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "delayMaxLag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actorHiddenDims": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 1024
+              }
+            },
+            "criticHiddenDims": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 1024
+              }
+            },
+            "activation": {
+              "enum": [
+                "elu",
+                "relu",
+                "tanh"
+              ]
+            },
+            "initialStd": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 5
+            }
+          }
+        },
+        "teacherCheckpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "walk": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "pattern": "^[-A-Za-z0-9_]{1,80}$"
+                },
+                "checkpointSha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "configDigest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "jobId",
+                "checkpointSha256",
+                "configDigest"
+              ]
+            },
+            "stand": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "pattern": "^[-A-Za-z0-9_]{1,80}$"
+                },
+                "checkpointSha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "configDigest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "jobId",
+                "checkpointSha256",
+                "configDigest"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "numEnvs",
+        "iterations",
+        "seed",
+        "numStepsPerEnv",
+        "learningRate",
+        "episodeLengthSeconds",
+        "actionScale",
+        "servo",
+        "actionFilter",
+        "controlFrequencyHz",
+        "normalizeObservations"
+      ]
+    },
+    "recipeDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "configDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "recipeId",
+    "robotProfileId",
+    "catalogRevision",
+    "taskId",
+    "actionId",
+    "terrain",
+    "backlash",
+    "factoryOverrides",
+    "commandProfile",
+    "teacherRequirements",
+    "requestedConfig",
+    "effectiveConfig",
+    "recipeDigest",
+    "configDigest"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rom:training:experiment:v1",
+  "title": "ROM_TRAINING_EXPERIMENT_V1",
+  "$defs": {
+    "numericData": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/numericData"
+          }
+        },
+        {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/numericData"
+          }
+        }
+      ]
+    }
+  }
+}
