@@ -31,18 +31,9 @@ def validate_request(job):
                'parentJobId', 'checkpointSha256', 'idempotencyKey', 'limits', 'experimentJson'}
     require(set(job) <= allowed and job.get('scope', {}).get('environment') == 'SIMULATOR', 'MANAGED_SIMULATOR_REQUIRED')
     require(job.get('kind') in ('COMMISSION', 'TRAIN') and re.fullmatch(r'[-A-Za-z0-9_]{1,80}', job.get('jobId', '')), 'MANAGED_RECIPE_INVALID')
-    limits = job['limits']
-    shared_train = (gpu_sharing_mode(job) == 'SHARED_WORKLOADS' and job['kind'] == 'TRAIN'
-                    and limits.get('normalEnabled') is True
-                    and type(limits.get('maxEnvs')) is int and limits['maxEnvs'] == 64
-                    and type(limits.get('maxIterations')) is int and limits['maxIterations'] == 10)
-    require(gpu_sharing_mode(job) == 'EXCLUSIVE' or job['kind'] == 'COMMISSION' or shared_train,
-            'MANAGED_SHARED_COMMISSION_REQUIRED')
+    gpu_sharing_mode(job)
     require(all(type(job.get(k)) is int for k in ('numEnvs', 'iterations', 'seed', 'timeoutSeconds')), 'MANAGED_PARAMETERS_INVALID')
     require(1 <= job['numEnvs'] <= 4096 and 1 <= job['iterations'] <= 20000 and 0 <= job['seed'] <= 2147483647 and 1 <= job['timeoutSeconds'] <= 43200, 'MANAGED_PARAMETERS_INVALID')
-    if shared_train:
-        require(job['numEnvs'] <= 64 and job['iterations'] <= 10 and job['timeoutSeconds'] <= 600,
-                'MANAGED_SHARED_ENVELOPE_EXCEEDED')
     if job['kind'] == 'COMMISSION':
         require((job['numEnvs'], job['iterations'], job['timeoutSeconds']) == (64, 5, 600) and not job.get('parentJobId'), 'MANAGED_SMOKE_REQUIRED')
     else:
