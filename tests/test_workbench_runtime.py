@@ -195,8 +195,8 @@ def test_experimental_resume_selects_retained_history_and_refuses_evicted_or_mis
     with pytest.raises(ValueError):managed.select_resume_checkpoint(job,current,make_spec(actionScale=.5))
     (parent/old['artifactId']).write_bytes(b'tampered')
     with pytest.raises(ValueError):managed.select_resume_checkpoint(job,current,spec)
-    # Legacy jobs remain intentionally latest-only.
-    assert managed.select_resume_checkpoint({**job,'checkpointSha256':latest['sha256']},current,None)==parent/latest['artifactId']
+    # A missing recipe can no longer select a latest-only checkpoint.
+    with pytest.raises(ValueError,match='MANAGED_EXPERIMENT_REQUIRED'):managed.select_resume_checkpoint({**job,'checkpointSha256':latest['sha256']},current,None)
     with pytest.raises(ValueError):managed.select_resume_checkpoint(job,current,None)
 
 
@@ -330,10 +330,10 @@ def test_owned_read_detects_identity_change_during_verification(retained_checkpo
     with pytest.raises(ValueError):trusted_checkpoint(f.current,f.job,f.ref)
 
 
-def test_legacy_runtime_handoff_keeps_path_string_and_upstream_restore(tmp_path):
+def test_recipe_runtime_handoff_preserves_path_and_upstream_restore(tmp_path):
     from mjlab_microduck.managed_training import load_resume_checkpoint
     from mjlab.rl import MjlabOnPolicyRunner
-    checkpoint=tmp_path/'legacy.pt'
+    checkpoint=tmp_path/'policy.pt'
     payload=dict(actor_state_dict={},iter=19,infos=dict(env_state=dict(common_step_counter=4567)))
     torch.save(payload,checkpoint)
     env=SimpleNamespace(common_step_counter=0)
@@ -341,11 +341,11 @@ def test_legacy_runtime_handoff_keeps_path_string_and_upstream_restore(tmp_path)
     handed=[]
     def consume(value,**kwargs):
         handed.append(value)
-        assert type(value) is str and value==str(checkpoint)
+        assert value==checkpoint
         return MjlabOnPolicyRunner.load(runner,value,**kwargs)
     runner.load=consume
-    assert load_resume_checkpoint(runner,checkpoint,None,map_location='cpu')==payload['infos']
-    assert handed==[str(checkpoint)] and runner.current_learning_iteration==19
+    assert load_resume_checkpoint(runner,checkpoint,make_spec(),map_location='cpu')==payload['infos']
+    assert handed==[checkpoint] and runner.current_learning_iteration==19
     assert env.common_step_counter==4567
 
 

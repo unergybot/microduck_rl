@@ -6,17 +6,24 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 import pytest
+from mjlab_microduck.workbench import canonical_json, resolve_experiment, catalog
+WALK = 'Mjlab-Velocity-Flat-MicroDuck'
+
+def freeze_experiment(value):
+    config = {k:value[k] for k in ('numEnvs','iterations','seed')}
+    value['experimentJson'] = canonical_json(resolve_experiment(dict(schemaVersion='ROM_TRAINING_EXPERIMENT_V1',recipeId=WALK,robotProfileId='rom-xl330-v1',config=config)))
+    return value
 
 spec = importlib.util.spec_from_file_location('managed', Path(__file__).parents[1] / 'src/mjlab_microduck/managed_training.py')
 managed = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(managed)
 
 def job():
-    return {'jobId':'job-a','kind':'COMMISSION','scope':{'environment':'SIMULATOR','gpuUuid':'GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee','driverVersion':'580.1'},
+    return freeze_experiment({'jobId':'job-a','kind':'COMMISSION','scope':{'environment':'SIMULATOR','gpuUuid':'GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee','driverVersion':'580.1'},
             'numEnvs':64,'iterations':5,'seed':7,'timeoutSeconds':600,'parentJobId':'','checkpointSha256':'',
-            'limits':{'driverFloor':'580.1','computeCapabilities':['8.6'],'bootstrapGpuMemoryBytes':8<<30,'diskBytes':10<<30}}
+            'limits':{'driverFloor':'580.1','computeCapabilities':['8.6'],'bootstrapGpuMemoryBytes':8<<30,'diskBytes':10<<30}})
 
-def test_fixed_recipe_rejects_physical_cpu_and_custom_commands():
+def test_recipe_runner_rejects_physical_cpu_and_custom_commands():
     for patch in ({'scope':{'environment':'REAL'}},{'command':'bash'},{'numEnvs':4096},{'kind':'SHELL'}):
         value=job();value.update(patch)
         with pytest.raises(ValueError):managed.validate_request(value)
@@ -33,9 +40,9 @@ def test_managed_checkpoint_publication_is_atomic_and_hash_bound(tmp_path):
 def test_resume_rejects_unmanaged_or_modified_checkpoint(tmp_path):
     directory=tmp_path/'jobs/job-b';directory.mkdir(parents=True)
     value=job();value.update(jobId='job-b',kind='TRAIN',parentJobId='job-a',checkpointSha256='sha256:'+'a'*64)
-    with pytest.raises(ValueError): managed.resume_checkpoint(value,directory)
+    with pytest.raises(ValueError): managed.select_resume_checkpoint(value,directory,json.loads(value['experimentJson']))
     parent=directory.parent/'job-a';parent.mkdir();(parent/'checkpoint.pt').write_bytes(b'changed')
-    with pytest.raises(ValueError): managed.resume_checkpoint(value,directory)
+    with pytest.raises(ValueError): managed.select_resume_checkpoint(value,directory,json.loads(value['experimentJson']))
 
 def test_failure_writes_sanitized_result_without_ready(tmp_path):
     request=tmp_path/'request.json';request.write_text(json.dumps(job()))
@@ -92,7 +99,7 @@ def test_bundle_publication_failure_preserves_successful_export(tmp_path):
 def test_commission_accepts_supported_sharing_modes_without_rewriting_scope(mode):
     value = job(); value['scope']['gpuSharingMode'] = mode
     original = json.loads(json.dumps(value))
-    assert managed.validate_request(value) == managed.TASK
+    assert managed.validate_request(value) == WALK
     assert value == original
 
 
@@ -108,8 +115,9 @@ def test_shared_training_uses_the_published_envelope(mode):
     value = job(); value['scope']['gpuSharingMode'] = mode
     value.update(kind='TRAIN', iterations=20)
     value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=1000)
+    freeze_experiment(value)
     original = json.loads(json.dumps(value))
-    assert managed.validate_request(value) == managed.TASK
+    assert managed.validate_request(value) == WALK
     assert value == original
     for patch in ({'numEnvs':65}, {'iterations':1001}):
         outside = json.loads(json.dumps(value)); outside.update(patch)
@@ -118,11 +126,11 @@ def test_shared_training_uses_the_published_envelope(mode):
 
 
 @pytest.mark.parametrize('mode', [None, '', 'EXCLUSIVE'])
-def test_legacy_exclusive_normal_envelope_is_preserved(mode):
+def test_exclusive_normal_envelope_is_preserved(mode):
     value = job(); value['kind'] = 'TRAIN'
     if mode is not None: value['scope']['gpuSharingMode'] = mode
     value['limits'].update(normalEnabled=True, maxEnvs=4096, maxIterations=20000)
-    assert managed.validate_request(value) == managed.TASK
+    assert managed.validate_request(value) == WALK
 
 
 @pytest.mark.parametrize('patch', [{'numEnvs':63}, {'iterations':4}, {'timeoutSeconds':599}, {'parentJobId':'job-parent'}])
@@ -139,6 +147,10 @@ def preflight_host(monkeypatch):
     identity = {key: 'sha256:' + digit * 64 for key, digit in
                 [('recipeDigest', 'a'), ('modelDigest', 'b'), ('dependencyDigest', 'c')]}
     value['limits'].update(identity)
+    from importlib.resources import files
+    digest = lambda v:'sha256:'+hashlib.sha256(canonical_json(v).encode()).hexdigest()
+    data=catalog()
+    identity['trainingExperimentsV1']=dict(catalogRevision=data['catalogRevision'],catalogSha256=digest(data),schemaSha256=digest(json.loads(files('mjlab_microduck.workbench').joinpath('resources/request.schema.json').read_text())),recipeDigests=[digest(r) for r in data['recipes']],robotProfileIds=[p['robotProfileId'] for p in data['robotProfiles']])
     host = {'gpu': value['scope']['gpuUuid'], 'driver': '580.1', 'free': '10240',
             'processes': '<nvidia_smi_log><gpu><processes/></gpu></nvidia_smi_log>'}
     original_read = Path.read_text
@@ -322,12 +334,14 @@ def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tm
     from types import ModuleType
     events = []
     value = job()
-    if diagnostics != 'missing_digest': value['requestDigest'] = 'sha256:' + 'a' * 64
+    value['requestDigest'] = 'sha256:' + 'a' * 64
     @dataclass
     class AgentConfig:
         clip_actions: float = 1.
+        num_steps_per_env: int = 24
     class Runner:
         logger = SimpleNamespace(init_logging_writer=lambda: None, log=lambda: None)
+        current_learning_iteration = 0
         def save(self, path, infos=None): Path(path).write_bytes(b'checkpoint')
         def learn(self, **kwargs):
             events.append('learn')
@@ -336,6 +350,7 @@ def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tm
             events.append('export')
             raise RuntimeError('export reached')
     runner = Runner()
+    cfg=SimpleNamespace(scene=SimpleNamespace(),curriculum={})
     env = SimpleNamespace(step_dt=.02, close=lambda: events.append('close'))
     modules = {
         'mjlab': {}, 'mjlab.tasks': {},
@@ -347,6 +362,8 @@ def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tm
         'mjlab.rl.exporter_utils': {'attach_metadata_to_onnx': lambda *a: None, 'get_base_metadata': lambda *a: {}},
         'mjlab_microduck.rom.export_metadata': {'attach_microduck_metadata': lambda *a: None},
         'torch': {'cuda': SimpleNamespace(mem_get_info=lambda _: (1, 1))},
+        'mjlab_microduck.workbench.engine': {'build_configs':lambda _: (cfg,AgentConfig())},
+        'mjlab_microduck.workbench.checkpoints': {'load_teachers':lambda *a:{}},
     }
     for name, attributes in modules.items():
         module = ModuleType(name); module.__dict__.update(attributes)
@@ -354,6 +371,9 @@ def test_optional_observer_setup_preserves_learning_and_authoritative_failure(tm
     observer_spec = importlib.util.spec_from_file_location('mjlab_microduck.training_console',
         Path(__file__).parents[1] / 'src/mjlab_microduck/training_console.py')
     observer = importlib.util.module_from_spec(observer_spec); observer_spec.loader.exec_module(observer)
+    if diagnostics == 'missing_digest':
+        original_observe=observer.observe_runner
+        observer.observe_runner=lambda runner,directory,request,**kw:original_observe(runner,directory,{k:v for k,v in request.items() if k!='requestDigest'},**kw)
     if diagnostics == 'setup_failure':
         observer.observe_runner = lambda *args: (_ for _ in ()).throw(OSError('optional setup failed'))
     monkeypatch.setitem(sys.modules, 'mjlab_microduck.training_console', observer)
@@ -428,6 +448,9 @@ def measured_host(tmp_path, monkeypatch, *, fault=None, saves=0):
                                   'get_base_metadata': lambda *a, **kw: {}},
         'mjlab_microduck.rom.export_metadata': {'attach_microduck_metadata': lambda *a, **kw: None},
         'torch': {'cuda': cuda},
+        'mjlab_microduck.workbench.engine': {'build_configs':lambda _: (cfg,Config())},
+        'mjlab_microduck.workbench.checkpoints': {'load_teachers':lambda *a:{}},
+        'onnx': {'load':lambda _:SimpleNamespace(metadata_props=SimpleNamespace(add=lambda:SimpleNamespace())), 'save':lambda *a:None},
         'onnxruntime': {'InferenceSession': lambda *a, **kw: SimpleNamespace(
             get_inputs=lambda: [SimpleNamespace(shape=[1, 61], name='obs')],
             run=lambda *a: [np.zeros((1, 14))])},
@@ -436,7 +459,7 @@ def measured_host(tmp_path, monkeypatch, *, fault=None, saves=0):
         module = ModuleType(name); module.__dict__.update(attributes)
         monkeypatch.setitem(sys.modules, name, module)
     if fault == 'teachers':
-        spec = {'taskId': managed.TASK, 'configDigest': 'sha256:' + 'b' * 64}
+        spec = {'taskId': WALK, 'configDigest': 'sha256:' + 'b' * 64}
         monkeypatch.setattr(managed, 'experiment', lambda _: spec)
         for name, attributes in {
             'mjlab_microduck.workbench.engine': {'build_configs': lambda _: (cfg, Config())},
@@ -705,12 +728,13 @@ def test_failed_entry_clock_keeps_accepted_execution_with_unknown_start_measurem
     assert points['Measurement/terminalState'] == 1
 
 
-def test_measurements_without_experiment_report_observer_not_applicable(tmp_path, monkeypatch):
-    """Missing Runtime disposition must not masquerade as uninstrumented V2."""
+def test_disabled_observer_does_not_block_recipe_training(tmp_path, monkeypatch):
+    """A missing optional read capability never blocks recipe execution."""
     request, captured, _ = measured_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(managed.Runtime,'_observer_version',0,raising=False)
     assert managed.run_managed(request) == 0
     values = captured['recorder'].snapshot()[1]
-    assert values['MeasureObserver/state'] == 4
+    assert values['MeasureObserver/state'] == 0
     assert 'MeasureObserver/hookCalls' not in values
     assert 'MeasureObserver/hookSeconds' not in values
 
@@ -721,7 +745,7 @@ def test_runtime_observer_diagnostics_preserve_training_failure_and_known_totals
     from types import ModuleType
 
     request, captured, events = measured_host(tmp_path, monkeypatch, fault='training')
-    spec = {'taskId': managed.TASK, 'configDigest': 'sha256:' + 'b' * 64}
+    spec = {'taskId': WALK, 'configDigest': 'sha256:' + 'b' * 64}
     monkeypatch.setattr(managed, 'experiment', lambda _: spec)
     @dataclass
     class Config:
@@ -771,8 +795,9 @@ def test_bounded_shared_train_and_resume_preserve_request(parent, bounds):
     value.update(kind='TRAIN', parentJobId=parent, numEnvs=bounds[0],
                  iterations=bounds[1], timeoutSeconds=bounds[2])
     value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    freeze_experiment(value)
     original = json.loads(json.dumps(value))
-    assert managed.validate_request(value) == managed.TASK
+    assert managed.validate_request(value) == WALK
     assert value == original
 
 
@@ -801,6 +826,13 @@ def test_shared_timeout_is_the_supplied_execution_budget_not_a_literal_profile()
     value['scope']['gpuSharingMode'] = 'SHARED_WORKLOADS'
     value.update(kind='TRAIN', timeoutSeconds=601)
     value['limits'].update(normalEnabled=True, maxEnvs=64, maxIterations=10)
+    freeze_experiment(value)
     original = json.loads(json.dumps(value))
-    assert managed.validate_request(value) == managed.TASK
+    assert managed.validate_request(value) == WALK
     assert value == original
+
+
+def test_managed_training_requires_resolved_recipe():
+    value=job();value.pop('experimentJson')
+    with pytest.raises(ValueError, match='MANAGED_EXPERIMENT_REQUIRED'):
+        managed.validate_request(value)

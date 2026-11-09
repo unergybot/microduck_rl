@@ -28,20 +28,11 @@ def edit_numeric(original, override):
     return override
 
 
-def scale_stages(value,factor):
-    if isinstance(value,dict):
-        for key,item in value.items():
-            if key=='step' and type(item) is int:value[key]=round(item*factor)
-            else:scale_stages(item,factor)
-    elif isinstance(value,(list,tuple)):
-        for item in value:scale_stages(item,factor)
-
-
 def build_configs(spec):
     """Copy actual configs, apply typed values, leave the task registry immutable.
 
-    Curriculum boundaries count aggregate samples at upstream's 4096 env training
-    reference. numStepsPerEnv changes rollout batching, not sample boundaries.
+    Preserve the task factory's curriculum thresholds at every environment count.
+    Only explicit recipe overrides change the native training stages.
     """
     spec=verify_experiment(spec);values=spec['effectiveConfig']
     import mjlab_microduck.tasks
@@ -171,7 +162,6 @@ def build_configs(spec):
         params=term.params
         reward=params.get('reward_name');event=params.get('event_name');command=params.get('command_name')
         if (reward in values.get('rewards',{}) and 'weight' in values['rewards'][reward]) or event in values.get('events',{}) or command in values.get('commands',{}):del env.curriculum[name]
-    for term in env.curriculum.values():scale_stages(term.params,4096/values['numEnvs'])
     checked(abs(env.decimation*env.sim.mujoco.timestep-.02)<1e-8)
     checked(agent.actor.obs_normalization and agent.critic.obs_normalization)
     return env,agent
