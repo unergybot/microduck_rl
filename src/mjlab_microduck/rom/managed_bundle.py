@@ -67,7 +67,7 @@ def _prove(data):
     return proof.fingerprint
 
 
-def metadata_valid(metadata):
+def metadata_valid(metadata, *, task_id='Mjlab-Velocity-Flat-MicroDuck'):
     required = {'policySha256', 'modelDigest', 'recipeDigest', 'configDigest', 'normalizerDigest',
                 'sourceCommit', 'taskId', 'observationDimension', 'actionDimension', 'controlHz',
                 'observationLayout', 'normalizerBaked', 'jointNames', 'provenance'}
@@ -76,7 +76,7 @@ def metadata_valid(metadata):
     for key in ('policySha256', 'modelDigest', 'recipeDigest', 'configDigest', 'normalizerDigest', 'checkpointSha256', 'subjectDigest'):
         require(key not in metadata or re.fullmatch(DIGEST, metadata[key]) is not None, 'POLICY_METADATA_INVALID')
     require(re.fullmatch(r'[a-f0-9]{40}', metadata['sourceCommit']) is not None, 'POLICY_SOURCE_INVALID')
-    require(metadata['taskId'] == 'Mjlab-Velocity-Flat-MicroDuck'
+    require(metadata['taskId'] == task_id
             and metadata['observationDimension'] == 61 and metadata['actionDimension'] == 14
             and metadata['controlHz'] == 50 and metadata['normalizerBaked'] is True
             and metadata['observationLayout'] == 'MICRODUCK_OBS_61_V1'
@@ -106,7 +106,7 @@ def publish_bundle(policy: Path, output: Path, pins: dict):
         temporary.unlink(missing_ok=True)
 
 
-def verify_bundle(path: Path):
+def read_envelope(path: Path, *, manifest_limit=65536):
     require(not path.is_symlink() and 0 < path.stat().st_size <= MAX_BUNDLE, 'BUNDLE_SIZE_INVALID')
     try:
         with zipfile.ZipFile(path) as bundle:
@@ -115,16 +115,26 @@ def verify_bundle(path: Path):
             for entry in entries:
                 require(not entry.is_dir() and not stat.S_ISLNK(entry.external_attr >> 16)
                         and not entry.flag_bits & 1, 'BUNDLE_MEMBER_INVALID')
-            require(0 < bundle.getinfo('manifest.json').file_size <= 65536, 'BUNDLE_MANIFEST_INVALID')
+            require(0 < bundle.getinfo('manifest.json').file_size <= manifest_limit, 'BUNDLE_MANIFEST_INVALID')
             manifest = json.loads(bundle.read('manifest.json'), object_pairs_hook=_unique)
-            require(set(manifest) == {'schema', 'policy', 'policySizeBytes'} and manifest['schema'] == SCHEMA, 'BUNDLE_SCHEMA_INVALID')
+            require(type(manifest) is dict,'BUNDLE_MANIFEST_INVALID')
+            if manifest.get('schema') == SCHEMA:
+                require(bundle.getinfo('manifest.json').file_size <= 65536,'BUNDLE_MANIFEST_INVALID')
             metadata = manifest['policy']
-            metadata_valid(metadata)
+            require(type(metadata) is dict, 'POLICY_METADATA_INVALID')
             length = bundle.getinfo('policy.onnx').file_size
             require(type(manifest['policySizeBytes']) is int and 0 < length <= MAX_POLICY and length == manifest['policySizeBytes'], 'POLICY_SIZE_INVALID')
             data = bundle.read('policy.onnx')
             require(sha(data) == metadata['policySha256'], 'POLICY_DIGEST_MISMATCH')
-            require(_prove(data) == metadata['normalizerDigest'], 'POLICY_NORMALIZER_MISMATCH')
-            return metadata
+            return manifest, data
     except (zipfile.BadZipFile, KeyError, TypeError) as invalid:
         raise ValueError('BUNDLE_INVALID') from invalid
+
+
+def verify_bundle(path: Path):
+    manifest, data = read_envelope(path)
+    require(set(manifest) == {'schema', 'policy', 'policySizeBytes'} and manifest['schema'] == SCHEMA, 'BUNDLE_SCHEMA_INVALID')
+    metadata = manifest['policy']
+    metadata_valid(metadata)
+    require(_prove(data) == metadata['normalizerDigest'], 'POLICY_NORMALIZER_MISMATCH')
+    return metadata

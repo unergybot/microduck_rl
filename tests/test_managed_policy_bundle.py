@@ -4,7 +4,7 @@ import json
 import zipfile
 
 import pytest
-from tests.test_rom_bundle import write_normalized_onnx, write_minimal_onnx
+from tests.managed_onnx_fixture import write_normalized_onnx, write_minimal_onnx
 from mjlab_microduck.rom.managed_bundle import publish_bundle, verify_bundle
 
 
