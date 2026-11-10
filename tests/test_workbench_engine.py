@@ -53,13 +53,27 @@ def test_untrusted_terms_and_executable_overrides_rejected():
         with pytest.raises(ValueError):build_configs(spec(**changes))
 
 
-def test_curriculum_is_scaled_by_sample_count():
-    default,_=build_configs(spec())
-    changed,_=build_configs(spec(numEnvs=2))
-    for name,term in default.curriculum.items():
-        for key,stages in term.params.items():
-            if key.endswith('_stages'):
-                assert changed.curriculum[name].params[key][1]['step']==round(stages[1]['step']/2) if len(stages)>1 else True
+@pytest.mark.parametrize('num_envs', [64, 128, 4096])
+def test_default_walk_matches_native_configuration(num_envs):
+    from dataclasses import asdict
+    import mjlab_microduck.tasks
+    from mjlab.tasks.registry import load_env_cfg, load_rl_cfg
+    native = load_env_cfg('Mjlab-Velocity-Flat-MicroDuck')
+    native_agent = load_rl_cfg('Mjlab-Velocity-Flat-MicroDuck')
+    native.scene.num_envs = num_envs
+    native.seed = native_agent.seed = 0
+    native_agent.max_iterations = 1000
+    env, agent = build_configs(spec(numEnvs=num_envs, iterations=1000, seed=0))
+    assert asdict(agent) == asdict(native_agent)
+    assert env.episode_length_s == native.episode_length_s
+    assert asdict(env.actions['joint_pos']) == asdict(native.actions['joint_pos'])
+    assert asdict(env.commands['twist']) == asdict(native.commands['twist'])
+    expected = {name: term.params for name, term in native.curriculum.items()}
+    assert expected and any(any(k.endswith('_stages') and v for k,v in p.items()) for p in expected.values())
+    assert {name: term.params for name,term in env.curriculum.items()} == expected
+    keys = ('motor_name','model','kp_fw','vin_range','vin_drop_gain_range','vin_min','delay_min_lag','delay_max_lag')
+    for actual, original in zip(env.scene.entities['robot'].articulation.actuators, native.scene.entities['robot'].articulation.actuators, strict=True):
+        assert {k:getattr(actual,k) for k in keys} == {k:getattr(original,k) for k in keys}
 
 
 def test_named_physics_changes_reach_actual_compiled_model():

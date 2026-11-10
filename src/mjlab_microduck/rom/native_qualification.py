@@ -13,6 +13,7 @@ from typing import Protocol
 import copy
 
 PROFILE = {'id':'microduck-walk-flat-native-v1','seeds':[7,11,29],
+           'policyExecution':{'actionScale':1.,'headLowpass':1.,'legsLowpass':1.,'standPolicy':'none'},
            'scenarios':{'stand':[0.,0.,0.],'forward':[.05,0.,0.],'turn':[0.,0.,.2]},
            'settleSeconds':3.,'motionSeconds':10.,'stopSeconds':2.,
            'startupWallSeconds':60.,'episodeWallSeconds':120.,'fallDegrees':60.,
