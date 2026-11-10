@@ -836,3 +836,12 @@ def test_managed_training_requires_resolved_recipe():
     value=job();value.pop('experimentJson')
     with pytest.raises(ValueError, match='MANAGED_EXPERIMENT_REQUIRED'):
         managed.validate_request(value)
+
+
+def test_managed_training_accepts_one_day_with_published_budget():
+    value=job();value.update(kind='TRAIN',iterations=2000,timeoutSeconds=86400)
+    value['limits'].update(normalEnabled=True,maxEnvs=64,maxIterations=10000)
+    freeze_experiment(value)
+    assert managed.validate_request(value)==WALK
+    value['timeoutSeconds']=86401
+    with pytest.raises(ValueError,match='MANAGED_PARAMETERS_INVALID'):managed.validate_request(value)

@@ -31,7 +31,7 @@ def validate_request(job):
     require(job.get('kind') in ('COMMISSION', 'TRAIN') and re.fullmatch(r'[-A-Za-z0-9_]{1,80}', job.get('jobId', '')), 'MANAGED_RECIPE_INVALID')
     gpu_sharing_mode(job)
     require(all(type(job.get(k)) is int for k in ('numEnvs', 'iterations', 'seed', 'timeoutSeconds')), 'MANAGED_PARAMETERS_INVALID')
-    require(1 <= job['numEnvs'] <= 4096 and 1 <= job['iterations'] <= 20000 and 0 <= job['seed'] <= 2147483647 and 1 <= job['timeoutSeconds'] <= 43200, 'MANAGED_PARAMETERS_INVALID')
+    require(1 <= job['numEnvs'] <= 4096 and 1 <= job['iterations'] <= 20000 and 0 <= job['seed'] <= 2147483647 and 1 <= job['timeoutSeconds'] <= 86400, 'MANAGED_PARAMETERS_INVALID')
     if job['kind'] == 'COMMISSION':
         require((job['numEnvs'], job['iterations'], job['timeoutSeconds']) == (64, 5, 600) and not job.get('parentJobId'), 'MANAGED_SMOKE_REQUIRED')
     else:
