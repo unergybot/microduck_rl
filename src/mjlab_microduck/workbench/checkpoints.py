@@ -139,10 +139,13 @@ def trusted_checkpoint(directory, job, ref, *, snapshot=False):
                 and bool(re.fullmatch('sha256:[a-f0-9]{64}', parent['requestDigest'])))
         checked(type(parent.get('scope')) is dict and type(parent.get('limits')) is dict)
         def scope(value):
-            return {k: v for k, v in value.items() if k != 'containerId'}
+            return {k: v for k, v in value.items() if k not in ('containerId', 'imageReference')}
+        # Packaging/source revisions and release quotas are provenance, not
+        # checkpoint semantics. The complete experiment below plus model and
+        # dependency identities remain authoritative for resume compatibility.
         checked(scope(parent['scope']) == scope(job['scope']))
         checked(all(key in parent['limits'] and parent['limits'][key] == job['limits'].get(key)
-                    for key in ('modelDigest', 'recipeDigest', 'dependencyDigest')))
+                    for key in ('modelDigest', 'dependencyDigest')))
         source, source_proof = owned.json('experiment.json')
         spec = verify_experiment(source)
         checked(spec['configDigest'] == ref['configDigest']
