@@ -1,0 +1,13 @@
+{
+  "oldCandidate": "browser-handoff",
+  "repeatCandidate": "walking-handoff",
+  "caseCount": 32,
+  "sameCaseKeys": true,
+  "statusReasonMatches": 32,
+  "exactMetricMatches": 32,
+  "exactCommonCsvMatches": 32,
+  "comparedCsvRows": 45248,
+  "comparedCsvCells": 5384512,
+  "differences": [],
+  "deterministic": true
+}

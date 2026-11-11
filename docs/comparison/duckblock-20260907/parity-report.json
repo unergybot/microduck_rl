@@ -1,0 +1,12 @@
+{
+  "schema": "MICRODUCK_BROWSER_PARITY_V1",
+  "samples": 100,
+  "policySha256": "sha256:c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
+  "atol": 1e-05,
+  "rtol": 0.0001,
+  "passed": true,
+  "maxAbsoluteError": 2.384185791015625e-07,
+  "sampleSha256": "sha256:751bfd94ecb64bf1c3bd5d3f1f713b4d779c5cb76a8c4aba5b6545a917179af6",
+  "pythonOrtVersion": "1.24.4",
+  "browserBackend": "WASM"
+}
