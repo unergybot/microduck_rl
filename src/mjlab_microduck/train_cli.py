@@ -1,26 +1,14 @@
-"""`train` entry point: mjlab's trainer, plus `--hf-jobs` remote submission.
-
-This project's [project.scripts] `train` shadows mjlab's so the everyday
-command grows one flag:
-
-    uv run train Mjlab-Kick-Flat-MicroDuck --env.scene.num-envs 4096 \
-        --agent.max_iterations 4000              # local, exactly as before
-    uv run train Mjlab-Kick-Flat-MicroDuck --env.scene.num-envs 4096 \
-        --agent.max_iterations 4000 --hf-jobs    # same run, on HF Jobs
-
-Without --hf-jobs, argv is passed to mjlab.scripts.train untouched. With it,
-the submission flags (--flavor, --namespace, --detach, ... see hf_jobs.py)
-are consumed here and everything else is forwarded to `uv run train` inside
-the job.
-"""
+"""Run mjlab training with ROM lifecycle tracking and shared train options."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
+from functools import partial, update_wrapper
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +31,15 @@ def run_train_observed(
 ) -> Any:
     """Run the complete trainer inside one explicit ROM-visible lifecycle."""
 
-    source_root = Path(os.environ["MICRODUCK_SOURCE_ROOT"]).resolve()
+    from mjlab_microduck.checkpoints import INIT_CHECKPOINT_ENV, resolve
+
+    source_root = Path(os.environ.get("MICRODUCK_SOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
+    parent_digest = None
+    if spec := os.environ.get(INIT_CHECKPOINT_ENV):
+        checkpoint = resolve(spec).resolve()
+        with checkpoint.open("rb") as source:
+            parent_digest = hashlib.file_digest(source, "sha256").hexdigest()
+        os.environ[INIT_CHECKPOINT_ENV] = str(checkpoint)
     device = "cpu" if not os.environ.get("CUDA_VISIBLE_DEVICES") else f"cuda:{os.environ.get('LOCAL_RANK', '0')}"
     lifecycle = TrainingRunLifecycle(
         Path(log_dir),
@@ -53,6 +49,7 @@ def run_train_observed(
             train_cfg=_mapping(cfg.agent),
             env=cfg.env,
             device=device,
+            parent_checkpoint_sha256=parent_digest,
         ),
     )
     lifecycle.start()
@@ -81,26 +78,54 @@ def run_train_observed(
         heartbeat_thread.join(timeout=1.0)
 
 
-def main() -> int | None:
-    argv = sys.argv[1:]
-    if "--hf-jobs" in argv:
-        from mjlab_microduck.hf_jobs import submit
-
-        return submit([a for a in argv if a != "--hf-jobs"])
-
-    os.environ["MICRODUCK_SOURCE_ROOT"] = str(Path(__file__).resolve().parents[2])
-
+def _run_train_with_lifecycle(
+    task_id: str, cfg: Any, log_dir: Path, *, training_env: dict[str, str]
+) -> Any:
     from mjlab.scripts import train as mjlab_train
+    from mjlab_microduck.checkpoints import INIT_CHECKPOINT_ENV, install_init_checkpoint_patch
 
-    original_run_train = mjlab_train.run_train
+    # torchrunx serializes this entry point into separate worker processes.
+    os.environ.update(training_env)
+    if INIT_CHECKPOINT_ENV in os.environ:
+        install_init_checkpoint_patch()
+    delegate = getattr(mjlab_train, "_microduck_original_run_train", mjlab_train.run_train)
+    if os.environ.get("RANK", "0") != "0" or "MicroDuck" not in task_id:
+        return delegate(task_id, cfg, log_dir)
+    return run_train_observed(task_id, cfg, log_dir, delegate)
 
-    def observed(task_id: str, cfg: Any, log_dir: Path) -> Any:
-        return run_train_observed(task_id, cfg, log_dir, original_run_train)
 
-    mjlab_train.run_train = observed
+def install_training_lifecycle() -> None:
+    """Instrument either installed train entry point once, including rank-zero workers."""
+    from mjlab.scripts import train as mjlab_train
+    from mjlab_microduck.checkpoints import INIT_CHECKPOINT_ENV
 
-    return mjlab_train.main()
+    if hasattr(mjlab_train, "_microduck_original_run_train"):
+        return
+    names = (
+        INIT_CHECKPOINT_ENV,
+        "MICRODUCK_WARM_START",
+        "MICRODUCK_SOURCE_ROOT",
+        "MICRODUCK_IN_HF_JOB",
+        "MICRODUCK_SOURCE_PROVENANCE",
+    )
+    training_env = {name: os.environ[name] for name in names if name in os.environ}
+    mjlab_train._microduck_original_run_train = mjlab_train.run_train
+    worker = partial(_run_train_with_lifecycle, training_env=training_env)
+    mjlab_train.run_train = update_wrapper(worker, _run_train_with_lifecycle)
+
+
+def main() -> int | None:
+    from mjlab_microduck.train_hook import maybe_init_checkpoint, maybe_submit_to_hf_jobs
+
+    maybe_submit_to_hf_jobs()
+    maybe_init_checkpoint()
+    install_training_lifecycle()
+    from mjlab.scripts.train import main as mjlab_main
+
+    return mjlab_main()
 
 
 if __name__ == "__main__":
+    from mjlab_microduck.train_cli import main
+
     sys.exit(main())

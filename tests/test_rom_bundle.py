@@ -530,7 +530,7 @@ def test_builder_rejects_roller_masks_incompatible_with_usable_floor(
     """Fake ankle fixtures cannot replace floor-incompatible wheel contacts."""
     model_dir = tmp_path / "model"
     shutil.copytree(MICRODUCK_WALK_XML.parent, model_dir)
-    robot = model_dir / "robot_allcollisions_rollers.xml"
+    robot = model_dir / "robot_groundcontact_rollers.xml"
     rewritten: list[str] = []
     for line in robot.read_text().splitlines():
         rewritten.append(
@@ -810,7 +810,7 @@ def test_builder_rejects_noncanonical_complete_roller_topology(
     """The four code-owned wheel joints, bodies, and no extra wheels are exact."""
     model_dir = tmp_path / "model"
     shutil.copytree(MICRODUCK_WALK_XML.parent, model_dir)
-    robot = model_dir / "robot_allcollisions_rollers.xml"
+    robot = model_dir / "robot_groundcontact_rollers.xml"
     contents = robot.read_text()
     if mutation == "extra_passive_wheel":
         target = '<joint axis="0 0 1" name="passive_LF_wheel" class="passive_joint"/>'

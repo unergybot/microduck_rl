@@ -45,6 +45,12 @@ def build_configs(spec):
         if spec['backlash']:env=make_backlash_variant(env)
     # Factories can retain shared robot constants; detach before adapting profile.
     env=deepcopy(env)
+    if hasattr(agent.algorithm, 'bc_cfg'):
+        # VelStand's managed profile supplies its own verified teachers and body range.
+        agent.algorithm.bc_cfg = None
+        env.commands['body_pose'].ranges = tuple(map(tuple, spec['commandProfile']['bodyPoseRanges']))
+        if 'body_pose_range' not in values.get('curriculum', {}):
+            env.curriculum.pop('body_pose_range', None)
     env.scene.num_envs=values['numEnvs'];env.seed=values['seed'];env.episode_length_s=values['episodeLengthSeconds']
     agent.seed=values['seed'];agent.max_iterations=values['iterations'];agent.num_steps_per_env=values['numStepsPerEnv'];agent.algorithm.learning_rate=values['learningRate']
     checked(len(env.actions)==1)

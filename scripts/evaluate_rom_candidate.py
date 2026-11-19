@@ -34,7 +34,7 @@ from mjlab_microduck.rom.qualification import QualificationThresholds
 DEFAULT_MODEL = REPOSITORY_ROOT / "src/mjlab_microduck/robot/microduck/scene_walk.xml"
 DEFAULT_OUTPUT_ROOT = REPOSITORY_ROOT / "build/rom-eval"
 DEFAULT_LICENSE = REPOSITORY_ROOT / "LICENSE"
-DEFAULT_MODEL_LICENSE = REPOSITORY_ROOT / "README.md"
+DEFAULT_MODEL_LICENSE = REPOSITORY_ROOT / "LICENSE-MODELS.md"
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ def stamp_policy(
     checkpoint_label: str,
     experiment_ref: str,
 ) -> None:
-    from export import attach_microduck_metadata
+    from mjlab_microduck.rom.export_metadata import attach_microduck_metadata
 
     attach_microduck_metadata(
         onnx_path,
@@ -305,7 +305,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mandatory-all", action="store_true")
     parser.add_argument("--software-license-id", default="Apache-2.0")
     parser.add_argument("--software-license-file", type=Path, default=DEFAULT_LICENSE)
-    parser.add_argument("--model-license-id", default="LicenseRef-MicroDuck-CC-BY-SA-NC")
+    parser.add_argument("--model-license-id", default="CC-BY-NC-SA-4.0")
     parser.add_argument(
         "--model-license-status",
         choices=("DEVELOPMENT_ONLY", "DISTRIBUTION_CLEARED"),

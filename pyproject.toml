@@ -7,8 +7,8 @@ name = "mjlab-microduck"
 version = "0.1.0"
 description = "RL training environments for the Microduck robot, built on mjlab"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = "Apache-2.0 AND CC-BY-NC-SA-4.0"
+license-files = ["LICENSE", "LICENSE-MODELS.md"]
 # <3.13: bam (better-actuator-models) pins requires-python <3.13, and jobs must
 # run the same interpreter we test locally (3.12) — a floating upper bound let
 # HF jobs pick 3.13.14 (2026-07-21).
@@ -74,12 +74,22 @@ rom-vision = [
 mjlab_microduck = "mjlab_microduck.tasks"
 
 [project.scripts]
-# Shadows mjlab's `train` entry point: identical behavior, plus a --hf-jobs
-# flag that submits the run to Hugging Face Jobs instead (see train_cli.py).
+# This name collides with mjlab's `train` ON PURPOSE and must stay declared.
+# Same-name console scripts are last-writer-wins and both dist-info RECORDs
+# then claim bin/train, so deleting this line does NOT hand the name back to
+# mjlab: `uv sync` uninstalls the file (ours, per our RECORD) and nothing
+# recreates mjlab's, leaving no `train` in the venv at all — `uv run train`
+# then finds some unrelated `train` on PATH (liblinear's, 2026-08-31).
+# The `mjlab.tasks` entry point handles --hf-jobs and --init-checkpoint for
+# either shim and enables ROM training lifecycle metadata.
 train = "mjlab_microduck.train_cli:main"
 microduck-rom-sim = "mjlab_microduck.rom.main:main"
 microduck-rom-runtime-child = "mjlab_microduck.rom.runtime_child:main"
-  
+# Serve a simulated body to the real `robotd` — see sim/body_server.py.
+duck-body = "mjlab_microduck.sim.body_server:main"
+publish = "mjlab_microduck.publish.cli:main"
+share-training = "mjlab_microduck.publish.training:main"
+
 [tool.ruff]
 src = ["src"]  # Helpful for recognizing first-party imports.
 indent-width = 4
