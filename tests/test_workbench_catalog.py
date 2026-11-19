@@ -141,10 +141,15 @@ def test_catalog_defaults_and_command_ranges_match_real_registered_factories():
     # touch a CUDA context, compile a model or step physics.
     import mjlab_microduck.tasks  # noqa: F401 - register the real local tasks
     from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+    from mjlab_microduck.workbench.engine import build_configs
     registered = set(list_tasks())
     for recipe in catalog()['recipes']:
         assert recipe['taskId'] in registered
-        env, rl = load_env_cfg(recipe['taskId']), load_rl_cfg(recipe['taskId'])
+        if 'VelStand' in recipe['taskId']:
+            spec = resolve_experiment(request(recipe['recipeId']))
+            env, rl = build_configs(spec)
+        else:
+            env, rl = load_env_cfg(recipe['taskId']), load_rl_cfg(recipe['taskId'])
         assert recipe['defaults'] == {
             'numEnvs': env.scene.num_envs, 'iterations': rl.max_iterations, 'seed': rl.seed,
             'numStepsPerEnv': rl.num_steps_per_env, 'learningRate': rl.algorithm.learning_rate,

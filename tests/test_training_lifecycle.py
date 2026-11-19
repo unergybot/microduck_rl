@@ -110,11 +110,25 @@ def test_lifecycle_refuses_to_replace_existing_metadata(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "run_metadata.json").read_text())["task"] == "first"
 
 
+def test_hf_archive_uses_the_submitter_provenance(tmp_path, monkeypatch):
+    from mjlab_microduck.training_lifecycle import source_provenance
+
+    provenance = {
+        "source_commit": "a" * 40,
+        "source_dirty": True,
+        "source_diff_sha256": "b" * 64,
+    }
+    monkeypatch.setenv("MICRODUCK_IN_HF_JOB", "1")
+    monkeypatch.setenv("MICRODUCK_SOURCE_PROVENANCE", json.dumps(provenance))
+    assert source_provenance(tmp_path) == provenance
+
+
 def test_training_entry_publishes_running_before_environment_initialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from types import SimpleNamespace
 
+    from mjlab_microduck.robot.microduck_constants import MICRODUCK_STANDUP_ROBOT_CFG
     from mjlab_microduck.train_cli import run_train_observed
 
     class Action:
@@ -123,7 +137,9 @@ def test_training_entry_publishes_running_before_environment_initialization(
     class EnvironmentConfig:
         def __init__(self) -> None:
             self.actions = {"joint_pos": Action()}
-            self.scene = SimpleNamespace(num_envs=1024)
+            self.scene = SimpleNamespace(
+                num_envs=1024, entities={"robot": MICRODUCK_STANDUP_ROBOT_CFG}
+            )
             self.sim = SimpleNamespace(
                 timestep=0.005,
                 mujoco=SimpleNamespace(jacobian="sparse", solver="cg"),
@@ -158,7 +174,7 @@ def test_training_entry_publishes_running_before_environment_initialization(
     assert metadata["num_envs"] == 1024
     assert metadata["device"] == "cuda:0"
     assert metadata["action_scale"] == 0.8
-    assert metadata["physics_model"] == "robot_allcollisions.xml"
+    assert metadata["physics_model"] == "robot_groundcontact.xml"
     assert len(metadata["physics_contract_sha256"]) == 64
     assert metadata["controller"] == "BAM_XL330_M6"
     assert len(metadata["controller_contract_sha256"]) == 64

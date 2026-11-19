@@ -147,6 +147,14 @@ def collect_git_provenance(repository: Path) -> dict[str, Any]:
     }
 
 
+def source_provenance(repository: Path) -> dict[str, Any]:
+    """Read the submitter's provenance for HF source archives and Git elsewhere."""
+    if os.environ.get("MICRODUCK_IN_HF_JOB"):
+        if provenance := os.environ.get("MICRODUCK_SOURCE_PROVENANCE"):
+            return json.loads(provenance)
+    return collect_git_provenance(repository)
+
+
 def _digest_json(value: Mapping[str, Any]) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -159,6 +167,7 @@ def build_run_metadata(
     train_cfg: Mapping[str, Any],
     env: Any,
     device: str,
+    parent_checkpoint_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Build the immutable identity consumed by the ROM training monitor."""
 
@@ -170,11 +179,14 @@ def build_run_metadata(
     scene_cfg = getattr(env_cfg, "scene", None)
     num_envs = int(getattr(unwrapped, "num_envs", getattr(scene_cfg, "num_envs", 0)))
 
-    model_name = (
-        "robot_allcollisions.xml"
-        if any(name in task for name in ("SitStand", "StandUp", "GroundPick", "BallKick"))
-        else "robot_walk.xml"
-    )
+    robot_cfg = getattr(scene_cfg, "entities", {}).get("robot")
+    spec_fn = getattr(robot_cfg, "spec_fn", None)
+    model_xml = None
+    if spec_fn is not None:
+        from mjlab_microduck.robot.microduck_constants import ROBOT_XML_BY_SPEC_FN
+
+        model_xml = ROBOT_XML_BY_SPEC_FN.get(spec_fn)
+    model_name = model_xml.name if model_xml is not None else "robot_walk.xml"
     model_path = source_root / "src/mjlab_microduck/robot/microduck" / model_name
     model_sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
     sim_cfg = getattr(env_cfg, "sim", None)
@@ -202,9 +214,9 @@ def build_run_metadata(
     return {
         "schema_version": 1,
         "task": task,
-        **collect_git_provenance(source_root),
-        "fresh_run": not resume,
-        "parent_checkpoint_sha256": None,
+        **source_provenance(source_root),
+        "fresh_run": not resume and parent_checkpoint_sha256 is None,
+        "parent_checkpoint_sha256": parent_checkpoint_sha256,
         "num_envs": num_envs,
         "device": device,
         "action_scale": action_scale,

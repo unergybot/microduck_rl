@@ -38,6 +38,15 @@ def test_actual_robot_build_and_actuator_physics_all_70(recipe, profile):
     if s['actionId']=='kick_left': assert env.events['reset_ball'].params['offset'][1]>0
 
 
+def test_managed_velstand_disables_native_teacher_downloads():
+    from mjlab.tasks.registry import load_rl_cfg
+
+    recipe = "Mjlab-VelStand-Flat-MicroDuck"
+    _, agent = build_configs(spec(recipe))
+    assert agent.algorithm.bc_cfg is None
+    assert load_rl_cfg(recipe).algorithm.bc_cfg is not None
+
+
 def test_typed_edits_apply_and_do_not_mutate_factory():
     env,agent=build_configs(spec(ppo={'gamma':.97,'numLearningEpochs':2},network={'actorHiddenDims':[64,32]},rewards={'action_rate_l2':{'weight':-.7}},physics={'gravity':[0,0,-9.7]},gains={'kpFirmware':180},calibration={'jointZeroOffsets':{'left_knee':.01}}))
     assert agent.algorithm.gamma==.97 and agent.algorithm.num_learning_epochs==2
