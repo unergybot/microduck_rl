@@ -32,7 +32,7 @@ def test_resolve_local_and_missing(tmp_path):
 
 
 def test_init_flag_is_consumed_into_the_env(monkeypatch):
-    monkeypatch.delenv(checkpoints.INIT_CHECKPOINT_ENV, raising=False)
+    monkeypatch.setenv(checkpoints.INIT_CHECKPOINT_ENV, "")
     out = checkpoints.consume_init_flag(["Task", "--init-checkpoint", "hf://a/b/bundles/x/y_1", "--agent.max-iterations", "5"])
     assert out == ["Task", "--agent.max-iterations", "5"]
     assert os.environ[checkpoints.INIT_CHECKPOINT_ENV] == "hf://a/b/bundles/x/y_1"
