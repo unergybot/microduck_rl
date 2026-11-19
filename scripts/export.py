@@ -5,7 +5,10 @@
 The logic lives in the package so `uv run publish` shares it; see that module's docstring.
 """
 
-from mjlab_microduck.export import main
+from mjlab_microduck.export import ExportConfig, main, run_export
+from mjlab_microduck.rom.export_metadata import attach_microduck_metadata
+
+__all__ = ["ExportConfig", "attach_microduck_metadata", "main", "run_export"]
 
 if __name__ == "__main__":
     main()
